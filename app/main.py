@@ -13,10 +13,12 @@ class Settings(BaseSettings):
     cordra_user: str
     cordra_password: str
 
+    root_path: str|None = None  # might be behind a proxy. This would be the prefix then.
+
     model_config = SettingsConfigDict(env_file=".env")  # for dev env
 
 settings = Settings()
-app = FastAPI(title="CWR Argo Connector")
+app = FastAPI(title="CWR Argo Connector", root_path=settings.root_path)
 logger = logging.getLogger("uvicorn.error")
 
 def process_workflow(name: str, namespace: str):
