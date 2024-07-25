@@ -16,10 +16,10 @@ def _build_argo_client(url: str, token: str, verify_cert: bool = True):
     return argo_workflows.ApiClient(config)
 
 
-def get_workflow_information(argo_url: str, argo_token: str, namespace: str, workflow_name: str,
+def get_workflow_information(host: str, token: str, namespace: str, workflow_name: str,
                              verify_cert: bool = True) -> dict[str: Any]:
     """ Return workflow information from Argo """
-    client = _build_argo_client(argo_url, argo_token, verify_cert=verify_cert)
+    client = _build_argo_client(host, token, verify_cert=verify_cert)
     api = workflow_service_api.WorkflowServiceApi(client)
     wfl = api.get_workflow(namespace, workflow_name, _check_return_type=False).to_dict()
     return wfl
@@ -100,12 +100,12 @@ def _recursive_artifact_reader(url: str, argo_token: str, path: str, verify_cert
             yield from _recursive_artifact_reader(new_url, argo_token, new_path, verify_cert, chunk_size)
 
 
-def artifact_reader(argo_url: str, token: str, namespace: str, workflow_name: str,
+def artifact_reader(host: str, token: str, namespace: str, workflow_name: str,
                     artifact_list: list[tuple[str, str, str]], verify_cert: bool = True):
     """ Returns a generator that yields the file_path and content steram of artifacts from Argo """
     for (node_id, artifact_name, file_path) in artifact_list:
         # build my own http request because the API submits "workflow" as discriminator where it should be "workflows".
-        url = f"{argo_url}/artifact-files/{namespace}/workflows/{workflow_name}/{node_id}/outputs/{artifact_name}"
+        url = f"{host}/artifact-files/{namespace}/workflows/{workflow_name}/{node_id}/outputs/{artifact_name}"
 
         # build relative path for artifacts
         if file_path.startswith("/"):

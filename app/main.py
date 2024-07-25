@@ -25,7 +25,7 @@ def process_workflow(name: str, namespace: str):
 
     logger.info(f"Found {len(artifacts)} artifacts to process")
     artifact_stream_iterator = argo.artifact_reader(
-        argo_url=settings.argo_base_url,
+        host=settings.argo_base_url,
         token=settings.argo_token,
         namespace=namespace,
         workflow_name=name,
@@ -45,7 +45,13 @@ def process_workflow(name: str, namespace: str):
 def notify(namespace: str, name: str, background_tasks: BackgroundTasks):
 
     # Sanity check. Is this a valid workflow
-    wfl = argo.get_workflow_information(settings.argo_base_url, settings.argo_token, namespace, name, verify_cert=False)
+    wfl = argo.get_workflow_information(
+        host=settings.argo_base_url,
+        token=settings.argo_token,
+        namespace=namespace,
+        workflow_name=name,
+        verify_cert=False
+    )
     if wfl["status"]["phase"] != "Succeeded":
         raise HTTPException(status_code=400, detail="Workflow did not succeed")
 
