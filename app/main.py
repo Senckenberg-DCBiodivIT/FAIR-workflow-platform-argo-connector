@@ -43,6 +43,10 @@ def process_workflow(name: str, namespace: str):
     )
     logger.info(f"Successfully ingested {namespace}/{name}")
 
+@app.get("/")
+def healthcheck():
+    return "ok"
+
 @app.get("/notify/{namespace}/{name}")
 def notify(namespace: str, name: str, background_tasks: BackgroundTasks):
 
