@@ -152,3 +152,4 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
         print(f"Failed to create corda dataset: {type(e)} {str(e)}. Cleaning up uploaded objects")
         for cordra_id in created_ids:
             cordra.CordraObject.delete(obj_id=cordra_id, **upload_kwargs)
+        raise e
