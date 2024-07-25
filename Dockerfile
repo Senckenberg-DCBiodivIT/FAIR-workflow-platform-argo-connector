@@ -1,4 +1,8 @@
-FROM python:3.12.3
+FROM python:3.12.3-slim
+
+RUN apt update -y \
+  && apt install -y git \
+  && apt install -y libmagic-dev
 
 WORKDIR /
 
