@@ -5,6 +5,7 @@ import tempfile
 import magic
 import cordra
 from typing import Any, Generator
+import json_merge_patch
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -85,43 +86,55 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                 )
                 logger.debug("File ingested")
             created_ids[file_obj["@id"]] = "FileObject"
-
-        # create action
-        # TODO use workflow as action instead of software application
-        logger.debug("Create SoftwareApplication")
-        instrument = cordra.CordraObject.create(
-            obj_type="SoftwareApplication",
-            obj_json={
-                "name": "ModGP",
-                "identifier": "https://github.com/BioDT/uc-CWR"
-            },
-            **upload_kwargs
-        )
-        created_ids[instrument["@id"]] = "SoftwareApplication"
-
-        logger.debug("Create CreateAction")
-        action = cordra.CordraObject.create(
-            obj_type="CreateAction",
-            obj_json={
-                "agent": author1["@id"],
-                "result": [id for id in created_ids if created_ids[id] == "FileObject"],
-                "instrument": instrument["@id"]
-            },
-            **upload_kwargs
-        )
-        created_ids[action["@id"]] = "CreateAction"
+            break
 
         logger.debug("Create Dataset")
-        # TODO derive keywords, name and description from workflow input?
-        dataset = cordra.CordraObject.create(obj_type="Dataset", obj_json={
-            "name": "Species distribution models for <Enter Species>",
-            "description": "ModGP workflow output for <Enter Species>",
-            "keywords": ["GBIF", "Occurrence", "Biodiversity", "Observation", "ModGP", "SDM"],
-            "license": "https://spdx.org/licenses/CC-BY-SA-2.0",
+        properties = {
+            "name": wfl["metadata"]["name"],
             "author": [author1["@id"], author2["@id"]],
             "hasPart": [id for id in created_ids if created_ids[id] == "FileObject"],
-            "mentions": [action["@id"]],
-        }, **upload_kwargs)
+        }
+
+        # TODO derive these from the workflow somehow
+        action = None
+        if wfl["metadata"]["name"].startswith("modgp-"):
+            logger.info("This is a modgp workflow. Applying hardcoded values")
+
+            # create action
+            logger.debug("Create SoftwareApplication")
+            instrument = cordra.CordraObject.create(
+                obj_type="SoftwareApplication",
+                obj_json={
+                    "name": "ModGP",
+                    "identifier": "https://github.com/BioDT/uc-CWR"
+                },
+                **upload_kwargs
+            )
+            created_ids[instrument["@id"]] = "SoftwareApplication"
+
+            logger.debug("Create CreateAction")
+            action = cordra.CordraObject.create(
+                obj_type="CreateAction",
+                obj_json={
+                    "agent": author1["@id"],
+                    "result": [id for id in created_ids if created_ids[id] == "FileObject"],
+                    "instrument": instrument["@id"]
+                },
+                **upload_kwargs
+            )
+            created_ids[action["@id"]] = "CreateAction"
+
+            species = next(filter(lambda x: x["name"] == "species", wfl["spec"]["arguments"]["parameters"]))["value"]
+            dataset_patch = {
+                "name": f"Species distribution models for {species}",
+                "description": f"Species distribution model calculated with ModGP for {species}",
+                "keywords": ["GBIF", "Occurrence", "Biodiversity", "Observation", "ModGP", "SDM"],
+                "license": "https://spdx.org/licenses/CC-BY-SA-2.0",
+                "mentions": [action["@id"]],
+            }
+            properties = json_merge_patch.merge(properties, dataset_patch)
+
+        dataset = cordra.CordraObject.create(obj_type="Dataset", obj_json=properties, **upload_kwargs)
         created_ids[dataset["@id"]] = "Dataset"
 
         # Update files parfOf/resultOf to point to dataset/action
@@ -130,10 +143,11 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
             obj = cordra.CordraObject.read(obj_id=cordra_id, **upload_kwargs)
             if ("partOf" not in obj) or (obj["partOf"] is None):
                 obj["partOf"] = [dataset["@id"]]
-            obj["resultOf"] = action["@id"]
+            if action is not None:
+                obj["resultOf"] = action["@id"]
             cordra.CordraObject.update(obj_id=cordra_id, obj_json=obj, **upload_kwargs)
 
-        logger.info("Dataset ingested. Cordra ID: " + dataset["@id"])
+        logger.info(f"Dataset ingested. Cordra ID: {dataset['@id']} ({host}/objects/{dataset['@id']})")
         return dataset["@id"]
     except Exception as e:
         print(f"Failed to create corda dataset: {type(e)} {str(e)}. Cleaning up uploaded objects")
