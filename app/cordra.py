@@ -86,7 +86,6 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                 )
                 logger.debug("File ingested")
             created_ids[file_obj["@id"]] = "FileObject"
-            break
 
         logger.debug("Create Dataset")
         properties = {
