@@ -60,8 +60,25 @@ def notify(namespace: str, name: str, background_tasks: BackgroundTasks):
         workflow_name=name,
         verify_cert=False
     )
+
+    # check if workflow is finished
+    workflow_phase = wfl["status"]["phase"]
+    all_nodes_done = True
+    if not workflow_phase == "Succeeded":
+        for node_id in wfl["status"]["nodes"]:
+            node = wfl["status"]["nodes"][node_id]
+            if node["name"].split(".")[-1].startswith("onExit"):  # "name.onExit" or "name.onExit(0), ...
+                continue
+            elif node["phase"] != "Succeeded":
+                print(node)
+                all_nodes_done = False
+                break
+
     if wfl["status"]["phase"] != "Succeeded":
-        raise HTTPException(status_code=400, detail="Workflow did not succeed")
+        if not all_nodes_done:
+            raise HTTPException(status_code=400, detail="Workflow did not succeed")
+        else:
+            logger.info("Workflow still running, but only on exit handler. Continue processing")
 
     # are there any artifacts to process?
     artifacts = argo.get_artifact_list(wfl)
