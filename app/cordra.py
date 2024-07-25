@@ -4,10 +4,11 @@ from pathlib import Path
 import tempfile
 import magic
 import cordra
+from typing import Any, Generator
 
 logger = logging.getLogger("uvicorn.error")
 
-def create_dataset_from_workflow_artifacts(host, user, password, wfl, artifact_stream_iterator):
+def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, wfl: dict[str: Any], artifact_stream_iterator: Generator, file_max_size: int = 100*1024*1024) -> str:
     upload_kwargs = {
         "host": host,
         "username": user,
@@ -57,7 +58,7 @@ def create_dataset_from_workflow_artifacts(host, user, password, wfl, artifact_s
                 logger.debug(f"Download done ({file_size / 1024 / 1024:.2f} MB)")
 
                 # Cordra has issues with huge files
-                if file_size / (1024 * 1024) > 1000:
+                if file_size > file_max_size:
                     logger.warning(f"File size is {file_size / 1024 / 1024:.2f} MB, which is too large to upload. Skipping...")
                     continue
 
@@ -84,7 +85,6 @@ def create_dataset_from_workflow_artifacts(host, user, password, wfl, artifact_s
                 )
                 logger.debug("File ingested")
             created_ids[file_obj["@id"]] = "FileObject"
-            break  ## TODO remove to process multiple files
 
         # create action
         # TODO use workflow as action instead of software application
@@ -134,6 +134,7 @@ def create_dataset_from_workflow_artifacts(host, user, password, wfl, artifact_s
             cordra.CordraObject.update(obj_id=cordra_id, obj_json=obj, **upload_kwargs)
 
         logger.info("Dataset ingested. Cordra ID: " + dataset["@id"])
+        return dataset["@id"]
     except Exception as e:
         print(f"Failed to create corda dataset: {type(e)} {str(e)}. Cleaning up uploaded objects")
         for cordra_id in created_ids:

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     argo_base_url: str
     argo_token: str
 
+    cordra_max_file_size: int = 100 * 1024 * 1024
     cordra_base_url: str
     cordra_user: str
     cordra_password: str
@@ -37,7 +38,8 @@ def process_workflow(name: str, namespace: str):
         user=settings.cordra_user,
         password=settings.cordra_password,
         wfl=wfl,
-        artifact_stream_iterator=artifact_stream_iterator
+        artifact_stream_iterator=artifact_stream_iterator,
+        file_max_size=settings.cordra_max_file_size
     )
     logger.info(f"Successfully ingested {namespace}/{name}")
 
