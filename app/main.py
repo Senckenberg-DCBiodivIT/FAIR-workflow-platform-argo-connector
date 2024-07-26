@@ -1,10 +1,15 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from app import cordra, argo
 from fastapi.responses import JSONResponse
 import logging
+from typing import Annotated
 
 class Settings(BaseSettings):
+    auth_username: str | None = None
+    auth_password: str | None = None
+
     argo_base_url: str
     argo_token: str
 
@@ -20,6 +25,16 @@ class Settings(BaseSettings):
 settings = Settings()
 app = FastAPI(title="CWR Argo Connector", root_path=settings.root_path)
 logger = logging.getLogger("uvicorn.error")
+
+security = HTTPBasic()
+if settings.auth_username is None or settings.auth_password is None:
+    logger.warning("No authentication enabled!")
+
+def check_auth(credentials: Annotated[HTTPBasicCredentials, Depends(security)]):
+    if settings.auth_username is None or settings.auth_password is None:
+        return
+    if not (credentials.username == settings.auth_username and credentials.password == settings.auth_password):
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
 
 def process_workflow(name: str, namespace: str):
     logger.info(f"Ingesting {namespace}/{name}")
@@ -49,7 +64,7 @@ def process_workflow(name: str, namespace: str):
 def healthcheck():
     return "ok"
 
-@app.get("/notify/{namespace}/{name}")
+@app.get("/notify/{namespace}/{name}", dependencies=[Depends(check_auth)])
 def notify(namespace: str, name: str, background_tasks: BackgroundTasks):
 
     # Sanity check. Is this a valid workflow
