@@ -89,7 +89,8 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
 
         logger.debug("Create Dataset")
         properties = {
-            "name": wfl["metadata"]["name"],
+            "name": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/title", wfl["metadata"]["name"]),
+            "description": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/description", None),
             "author": [author1["@id"], author2["@id"]],
             "hasPart": [id for id in created_ids if created_ids[id] == "FileObject"],
         }
