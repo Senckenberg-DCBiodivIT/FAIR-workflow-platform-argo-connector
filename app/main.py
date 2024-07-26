@@ -1,3 +1,4 @@
+import argo_workflows.exceptions
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -68,13 +69,16 @@ def healthcheck():
 def notify(namespace: str, name: str, background_tasks: BackgroundTasks):
 
     # Sanity check. Is this a valid workflow
-    wfl = argo.get_workflow_information(
-        host=settings.argo_base_url,
-        token=settings.argo_token,
-        namespace=namespace,
-        workflow_name=name,
-        verify_cert=False
-    )
+    try:
+        wfl = argo.get_workflow_information(
+            host=settings.argo_base_url,
+            token=settings.argo_token,
+            namespace=namespace,
+            workflow_name=name,
+            verify_cert=False
+        )
+    except argo_workflows.exceptions.NotFoundException:
+        raise HTTPException(status_code=404, detail="Workflow not found")
 
     # check if workflow is finished
     unsucceeded_nodes = []
