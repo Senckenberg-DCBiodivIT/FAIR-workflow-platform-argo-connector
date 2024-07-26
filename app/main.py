@@ -62,21 +62,16 @@ def notify(namespace: str, name: str, background_tasks: BackgroundTasks):
     )
 
     # check if workflow is finished
-    workflow_phase = wfl["status"]["phase"]
-    all_nodes_done = True
-    if not workflow_phase == "Succeeded":
-        for node_id in wfl["status"]["nodes"]:
-            node = wfl["status"]["nodes"][node_id]
-            if node["name"].split(".")[-1].startswith("onExit"):  # "name.onExit" or "name.onExit(0), ...
-                continue
-            elif node["phase"] != "Succeeded":
-                print(node)
-                all_nodes_done = False
-                break
+    unsucceeded_nodes = []
+    for node_id in wfl["status"]["nodes"]:
+        node = wfl["status"]["nodes"][node_id]
+        if "onExit" in node["name"]: continue # ignore exit nodes
+        if node["phase"] != "Succeeded":
+            unsucceeded_nodes.append(node["name"])
 
     if wfl["status"]["phase"] != "Succeeded":
-        if not all_nodes_done:
-            raise HTTPException(status_code=400, detail="Workflow did not succeed")
+        if len(unsucceeded_nodes) > 0:
+            raise HTTPException(status_code=400, detail=f"Workflow did not succeed (unsuccessful nodes: {unsucceeded_nodes})")
         else:
             logger.info("Workflow still running, but only on exit handler. Continue processing")
 
