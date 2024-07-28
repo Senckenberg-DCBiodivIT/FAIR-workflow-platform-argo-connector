@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     argo_base_url: str
     argo_token: str
+    argo_default_namespace: str = "argo"
 
     cordra_max_file_size: int = 100 * 1024 * 1024
     cordra_base_url: str
@@ -63,7 +64,25 @@ def process_workflow(name: str, namespace: str):
 
 @app.get("/")
 def healthcheck():
-    return "ok"
+    cordra_health = cordra.check_health(settings.cordra_base_url, settings.cordra_user, settings.cordra_password)
+    argo_health = argo.check_health(settings.argo_base_url, settings.argo_token, settings.argo_default_namespace, verify_cert=False)
+    response = {
+        "cordra_connection": cordra_health,
+        "argo_connection": argo_health
+    }
+    if cordra_health != True or argo_health != True:
+        raise HTTPException(status_code=500, detail=response)
+    else:
+        return JSONResponse(response)
+
+def is_argo_connection_healthy():
+    return {"test": "test"}
+    cordra_health = is_cordra_connection_healthy()
+    argo_health = is_argo_connection_healthy()
+    return {
+        "cordra": cordra_health,
+        "argo": argo_health
+    }
 
 @app.get("/notify/{namespace}/{name}", dependencies=[Depends(check_auth)])
 def notify(namespace: str, name: str, background_tasks: BackgroundTasks):

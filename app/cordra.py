@@ -9,6 +9,16 @@ import json_merge_patch
 
 logger = logging.getLogger("uvicorn.error")
 
+def check_health(host: str, user: str, password: str) -> bool|str:
+    try:
+        schemas = cordra.CordraObject.find(host=host, username=user, password=password, verify=False, query="type:Schema")
+        if schemas.get("size", 0) == 0:
+            return "No schemas found"
+    except Exception as e:
+        return str(e)
+
+    return True
+
 def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, wfl: dict[str: Any], artifact_stream_iterator: Generator, file_max_size: int = 100*1024*1024) -> str:
     upload_kwargs = {
         "host": host,
