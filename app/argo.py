@@ -88,12 +88,16 @@ def get_artifact_list(wfl: dict[str: Any]) -> list[tuple[str, str, str]]:
 def _recursive_artifact_reader(url: str, argo_token: str, path: str, verify_cert: bool = True, chunk_size=1024 * 1024):
     headers = {"Authorization": f"Bearer {argo_token}"}
 
-    # check header
-    head = requests.head(url, verify=verify_cert, headers=headers)
-    if head.status_code != 200:
-        head.raise_for_status()
-    if "Content-Disposition" in head.headers:  # it is a file
-        print(f"Yielding file from  {url}")
+    # Ideally, we would do a HEAD request here to check if it is a Download.
+    # However, agro does not properly support it. Head requests take a long time and fail for large files (gigabytes).
+    # So we open a connection via a get request instead, and close the connection once we read the response headers.
+    with requests.get(url, verify=verify_cert, headers=headers, stream=True) as response:
+        if response.status_code != 200:
+            response.raise_for_status()
+        is_download = "Content-Disposition" in response.headers
+
+    if is_download:
+        print(f"Yielding file from {url}")
         download_req = requests.get(url, verify=verify_cert, headers=headers, stream=True)
         download_req.raise_for_status()
         yield path, download_req.iter_content(chunk_size=chunk_size)
