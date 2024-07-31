@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 import os
 from pathlib import Path
 import tempfile
@@ -97,16 +98,41 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                 logger.debug("File ingested")
             created_ids[file_obj["@id"]] = "FileObject"
 
-        logger.debug("Create Dataset")
+        logger.debug("Create CreateAction")
+        date_format = "%Y-%m-%dT%H:%M:%SZ"
+        start_time = datetime.strptime(wfl["status"]["startedAt"], date_format)
+        end_time = wfl["status"].get("finishedAt", None)
+        if end_time is not None:
+            end_time = datetime.strptime(end_time, date_format)
+        else:
+            for node_name in wfl["status"]["nodes"]:
+                node_end_time = wfl["status"]["nodes"][node_name].get("finishedAt", None)
+                if node_end_time is not None:
+                    node_end_time = datetime.strptime(node_end_time, date_format)
+                    if end_time is None or node_end_time > end_time:
+                        end_time = node_end_time
+
+        action = cordra.CordraObject.create(
+            obj_type="CreateAction",
+            obj_json={
+                "agent": author1["@id"],
+                "result": [id for id in created_ids if created_ids[id] == "FileObject"],
+                "startTime": start_time.strftime(date_format),
+                "endTime": end_time.strftime(date_format)
+            },
+            **upload_kwargs
+        )
+        created_ids[action["@id"]] = "CreateAction"
+
         properties = {
             "name": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/title", wfl["metadata"]["name"]),
             "description": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/description", None),
             "author": [author1["@id"], author2["@id"]],
             "hasPart": [id for id in created_ids if created_ids[id] == "FileObject"],
+            "mentions": [action["@id"]],
         }
 
         # TODO derive these from the workflow somehow
-        action = None
         if wfl["metadata"]["name"].startswith("modgp-"):
             logger.info("This is a modgp workflow. Applying hardcoded values")
 
@@ -122,17 +148,12 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
             )
             created_ids[instrument["@id"]] = "SoftwareApplication"
 
-            logger.debug("Create CreateAction")
-            action = cordra.CordraObject.create(
-                obj_type="CreateAction",
-                obj_json={
-                    "agent": author1["@id"],
-                    "result": [id for id in created_ids if created_ids[id] == "FileObject"],
-                    "instrument": instrument["@id"]
-                },
+            logger.debug("Update action for instrument")
+            cordra.CordraObject.update(
+                obj_id=action["@id"],
+                obj_json=json_merge_patch.merge(action, {"instrument": instrument["@id"]}),
                 **upload_kwargs
             )
-            created_ids[action["@id"]] = "CreateAction"
 
             species = next(filter(lambda x: x["name"] == "species", wfl["spec"]["arguments"]["parameters"]))["value"]
             dataset_patch = {
@@ -140,10 +161,10 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                 "description": f"Species distribution model calculated with ModGP for {species}",
                 "keywords": ["GBIF", "Occurrence", "Biodiversity", "Observation", "ModGP", "SDM"],
                 "license": "https://spdx.org/licenses/CC-BY-SA-2.0",
-                "mentions": [action["@id"]],
             }
             properties = json_merge_patch.merge(properties, dataset_patch)
 
+        logger.debug("Create Dataset")
         dataset = cordra.CordraObject.create(obj_type="Dataset", obj_json=properties, **upload_kwargs)
         created_ids[dataset["@id"]] = "Dataset"
 
