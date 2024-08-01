@@ -7,6 +7,7 @@ import magic
 import cordra
 from typing import Any, Generator
 import json_merge_patch
+import yaml
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -98,6 +99,27 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                 logger.debug("File ingested")
             created_ids[file_obj["@id"]] = "FileObject"
 
+        logger.debug("Create workflow")
+        with tempfile.NamedTemporaryFile(delete=True,
+                                         prefix=f"argo-workflow-tmp-") as tmp_file:
+            yaml.dump(wfl, open(tmp_file.name, "w"), indent=2)
+            tmp_file.flush()
+            wfl_obj = cordra.CordraObject.create(
+                obj_type="Workflow",
+                obj_json={
+                    "name": "workflow.yaml",
+                    "contentSize": Path(tmp_file.name).stat().st_size,
+                    "encodingFormat": "text/yaml",
+                    "contentUrl": "workflow.yaml",
+                    "description": "Argo workflow definition",
+                    "programmingLanguage": "https://argoproj.github.io/workflows"
+                },
+                payloads={"workflow.yaml": ("workflow.yaml", open(tmp_file.name, "rb"))},
+                **upload_kwargs
+            )
+            logger.debug("Workflow ingested")
+            created_ids[wfl_obj["@id"]] = "Workflow"
+
         logger.debug("Create CreateAction")
         date_format = "%Y-%m-%dT%H:%M:%SZ"
         start_time = datetime.strptime(wfl["status"]["startedAt"], date_format)
@@ -118,7 +140,8 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                 "agent": author1["@id"],
                 "result": [id for id in created_ids if created_ids[id] == "FileObject"],
                 "startTime": start_time.strftime(date_format),
-                "endTime": end_time.strftime(date_format)
+                "endTime": end_time.strftime(date_format),
+                "instrument": wfl_obj["@id"]
             },
             **upload_kwargs
         )
@@ -128,8 +151,9 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
             "name": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/title", wfl["metadata"]["name"]),
             "description": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/description", None),
             "author": [author1["@id"], author2["@id"]],
-            "hasPart": [id for id in created_ids if created_ids[id] == "FileObject"],
+            "hasPart": [id for id in created_ids if created_ids[id] == "FileObject" or created_ids[id] == "Workflow"],
             "mentions": [action["@id"]],
+            "mainEntity": wfl_obj["@id"]
         }
 
         # TODO derive these from the workflow somehow
@@ -138,22 +162,22 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
 
             # create action
             logger.debug("Create SoftwareApplication")
-            instrument = cordra.CordraObject.create(
-                obj_type="SoftwareApplication",
-                obj_json={
-                    "name": "ModGP",
-                    "identifier": "https://github.com/BioDT/uc-CWR"
-                },
-                **upload_kwargs
-            )
-            created_ids[instrument["@id"]] = "SoftwareApplication"
-
-            logger.debug("Update action for instrument")
-            cordra.CordraObject.update(
-                obj_id=action["@id"],
-                obj_json=json_merge_patch.merge(action, {"instrument": instrument["@id"]}),
-                **upload_kwargs
-            )
+            # instrument = cordra.CordraObject.create(
+            #     obj_type="SoftwareApplication",
+            #     obj_json={
+            #         "name": "ModGP",
+            #         "identifier": "https://github.com/BioDT/uc-CWR"
+            #     },
+            #     **upload_kwargs
+            # )
+            # created_ids[instrument["@id"]] = "SoftwareApplication"
+            #
+            # logger.debug("Update action for instrument")
+            # cordra.CordraObject.update(
+            #     obj_id=action["@id"],
+            #     obj_json=json_merge_patch.merge(action, {"instrument": instrument["@id"]}),
+            #     **upload_kwargs
+            # )
 
             species = next(filter(lambda x: x["name"] == "species", wfl["spec"]["arguments"]["parameters"]))["value"]
             dataset_patch = {
