@@ -135,8 +135,20 @@ async def check_workflow(file: UploadFile):
     content = await file.read()
     content = yaml.load(content, Loader=yaml.CLoader)
     try:
-        argo.verify(settings.argo_base_url, settings.argo_token, content, verify_cert=False)
-        return "ok"
+        return argo.verify(settings.argo_base_url, settings.argo_token, content, verify_cert=False)
     except argo_workflows.exceptions.ApiException as e:
         raise HTTPException(status_code=400, detail=json.loads(e.body))
+
+
+@app.post("/workflow/submit", dependencies=[Depends(check_auth)])
+async def submit(file: UploadFile):
+    logger.info("Linting workflow...")
+    checked_workflow = await check_workflow(file)
+    logger.info("Submitting workflow")
+    try:
+        return argo.submit(settings.argo_base_url, settings.argo_token, checked_workflow, verify_cert=False)
+    except argo_workflows.exceptions.ApiException as e:
+        raise HTTPException(status_code=400, detail=json.loads(e.body))
+
+
 
