@@ -1,5 +1,8 @@
+import json
+
 import argo_workflows.exceptions
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
+import yaml
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, UploadFile
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from app import cordra, argo
@@ -123,3 +126,17 @@ def notify(namespace: str, name: str, background_tasks: BackgroundTasks):
         "workflow_namespace": wfl["metadata"]["namespace"],
         "artifacts": [{"node_id": node_id, "path": path} for (node_id, _, path) in artifacts],
     })
+
+@app.post("/workflow/check", dependencies=[Depends(check_auth)])
+async def check_workflow(file: UploadFile):
+    if not file.headers["content-type"] == "text/yaml":
+        raise HTTPException(status_code=400, detail="File format not supported")
+
+    content = await file.read()
+    content = yaml.load(content, Loader=yaml.CLoader)
+    try:
+        argo.verify(settings.argo_base_url, settings.argo_token, content, verify_cert=False)
+        return "ok"
+    except argo_workflows.exceptions.ApiException as e:
+        raise HTTPException(status_code=400, detail=json.loads(e.body))
+

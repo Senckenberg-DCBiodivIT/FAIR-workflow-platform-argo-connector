@@ -149,3 +149,12 @@ def artifact_reader(host: str, token: str, namespace: str, workflow_name: str,
         path = os.path.join(node_id, file_path)
 
         yield from _recursive_artifact_reader(url, token, path, verify_cert)
+
+def verify(host: str, token: str, workflow: dict[str: Any], verify_cert: bool = True):
+    client = _build_argo_client(host, token, verify_cert=verify_cert)
+    api = workflow_service_api.WorkflowServiceApi(client)
+
+    namespace = workflow["metadata"]["namespace"]
+    wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration())
+    model = workflow_service_api.IoArgoprojWorkflowV1alpha1WorkflowLintRequest(namepspace=namespace, workflow=wfl)
+    api.lint_workflow(namespace, model, _check_return_type=False)
