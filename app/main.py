@@ -41,7 +41,7 @@ def check_auth(credentials: Annotated[HTTPBasicCredentials, Depends(security)]):
 def process_workflow(name: str, namespace: str):
     logger.info(f"Ingesting {namespace}/{name}")
     wfl = argo.get_workflow_information(settings.argo_base_url, settings.argo_token, namespace, name, verify_cert=False)
-    artifacts = argo.get_artifact_list(wfl)
+    artifacts = argo.parse_artifact_list(wfl)
 
     logger.info(f"Found {len(artifacts)} artifacts to process")
     artifact_stream_iterator = argo.artifact_reader(
@@ -89,6 +89,7 @@ def notify(namespace: str, name: str, background_tasks: BackgroundTasks):
 
     # Sanity check. Is this a valid workflow
     try:
+        logger.info(f"Retrieving Workflow information for {namespace}/{name}")
         wfl = argo.get_workflow_information(
             host=settings.argo_base_url,
             token=settings.argo_token,
@@ -114,10 +115,11 @@ def notify(namespace: str, name: str, background_tasks: BackgroundTasks):
             logger.info("Workflow still running, but only on exit handler. Continue processing")
 
     # are there any artifacts to process?
-    artifacts = argo.get_artifact_list(wfl)
+    artifacts = argo.parse_artifact_list(wfl)
     if len(artifacts) == 0:
         return HTTPException(status_code=400, detail="No artifacts found")
 
+    logger.info(f"Starting background task to process {namespace}/{name}")
     background_tasks.add_task(process_workflow, name, namespace)
 
     return JSONResponse(status_code=202, content={

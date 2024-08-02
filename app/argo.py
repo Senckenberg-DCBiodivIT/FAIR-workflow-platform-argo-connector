@@ -34,23 +34,7 @@ def get_workflow_information(host: str, token: str, namespace: str, workflow_nam
     wfl = api.get_workflow(namespace, workflow_name, _check_return_type=False).to_dict()
     return wfl
 
-
-def reconstruct_workflow(wfl: dict[str: Any]) -> dict[str: Any]:
-    """" Reconstructs the submittable workflow yaml from argo's workflow response"""
-    workflow_reconstructed = dict(
-        kind="Workflow",
-        spec=wfl["spec"],
-    )
-    templateSpec = wfl["status"]["storedWorkflowTemplateSpec"]
-    for key in templateSpec:
-        workflow_reconstructed["spec"][key] = templateSpec[key]
-
-    # remove te template reference. we export the whole workflow
-    del workflow_reconstructed["spec"]["workflowTemplateRef"]
-    return workflow_reconstructed
-
-
-def get_artifact_list(wfl: dict[str: Any]) -> list[tuple[str, str, str]]:
+def parse_artifact_list(wfl: dict[str: Any]) -> list[tuple[str, str, str]]:
     """ Returns a list of artifacts in the workflow
     Ignores artifacts that are not part of a nodes output folder. This should
     ensure that no caching data is archived.
