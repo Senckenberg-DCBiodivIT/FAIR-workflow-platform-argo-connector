@@ -19,8 +19,7 @@ def check_health(host: str, token: str, namespace: str, verify_cert: bool = True
     client = _build_argo_client(host, token, verify_cert=verify_cert)
     api = workflow_service_api.WorkflowServiceApi(client)
     try:
-        print(token)
-        print(api.list_workflows(namespace, list_options_limit="1", _check_return_type=False))
+        api.list_workflows(namespace, list_options_limit="1", _check_return_type=False)
         return True
     except Exception as e:
         return str(e)

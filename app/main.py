@@ -78,15 +78,6 @@ def healthcheck():
     else:
         return JSONResponse(response)
 
-def is_argo_connection_healthy():
-    return {"test": "test"}
-    cordra_health = is_cordra_connection_healthy()
-    argo_health = is_argo_connection_healthy()
-    return {
-        "cordra": cordra_health,
-        "argo": argo_health
-    }
-
 @app.get("/notify/{namespace}/{name}", dependencies=[Depends(check_auth)])
 def notify(namespace: str, name: str, background_tasks: BackgroundTasks):
 
