@@ -135,7 +135,7 @@ async def check_workflow(file: UploadFile):
     content = await file.read()
     content = yaml.load(content, Loader=yaml.CLoader)
     try:
-        return argo.verify(settings.argo_base_url, settings.argo_token, content, verify_cert=False)
+        return argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=content["metadata"].get("namespace", settings.argo_default_namespace), verify_cert=False)
     except argo_workflows.exceptions.ApiException as e:
         raise HTTPException(status_code=400, detail=json.loads(e.body))
 
@@ -146,7 +146,7 @@ async def submit(file: UploadFile):
     checked_workflow = await check_workflow(file)
     logger.info("Submitting workflow")
     try:
-        return argo.submit(settings.argo_base_url, settings.argo_token, checked_workflow, verify_cert=False)
+        return argo.submit(settings.argo_base_url, settings.argo_token, checked_workflow, namespace=content["metadata"].get("namespace", settings.argo_default_namespace), verify_cert=False)
     except argo_workflows.exceptions.ApiException as e:
         raise HTTPException(status_code=400, detail=json.loads(e.body))
 
