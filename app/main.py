@@ -43,6 +43,8 @@ def process_workflow(name: str, namespace: str):
     wfl = argo.get_workflow_information(settings.argo_base_url, settings.argo_token, namespace, name, verify_cert=False)
     artifacts = argo.parse_artifact_list(wfl)
 
+    reconstructed_wfl = argo.reconstruct_workflow_from_workflowinfo(wfl)
+
     logger.info(f"Found {len(artifacts)} artifacts to process")
     artifact_stream_iterator = argo.artifact_reader(
         host=settings.argo_base_url,
@@ -58,6 +60,7 @@ def process_workflow(name: str, namespace: str):
         password=settings.cordra_password,
         wfl=wfl,
         artifact_stream_iterator=artifact_stream_iterator,
+        reconstructed_wfl=reconstructed_wfl,
         file_max_size=settings.cordra_max_file_size
     )
     logger.info(f"Successfully ingested {namespace}/{name}")

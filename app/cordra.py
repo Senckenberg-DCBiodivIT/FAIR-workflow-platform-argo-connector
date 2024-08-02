@@ -21,7 +21,7 @@ def check_health(host: str, user: str, password: str) -> bool|str:
 
     return True
 
-def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, wfl: dict[str: Any], artifact_stream_iterator: Generator, file_max_size: int = 100*1024*1024) -> str:
+def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, wfl: dict[str: Any], artifact_stream_iterator: Generator, reconstructed_wfl: dict[str: Any], file_max_size: int = 100*1024*1024) -> str:
     upload_kwargs = {
         "host": host,
         "username": user,
@@ -102,7 +102,7 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
         logger.debug("Create workflow")
         with tempfile.NamedTemporaryFile(delete=True,
                                          prefix=f"argo-workflow-tmp-") as tmp_file:
-            yaml.dump(wfl, open(tmp_file.name, "w"), indent=2)
+            yaml.dump(reconstructed_wfl, open(tmp_file.name, "w"), indent=2)
             tmp_file.flush()
             wfl_obj = cordra.CordraObject.create(
                 obj_type="Workflow",

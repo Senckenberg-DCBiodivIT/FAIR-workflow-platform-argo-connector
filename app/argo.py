@@ -68,6 +68,45 @@ def parse_artifact_list(wfl: dict[str: Any]) -> list[tuple[str, str, str]]:
 
     return artifacts_list
 
+def reconstruct_workflow_from_workflowinfo(wfl: dict[str: Any]) -> dict[str: Any]:
+
+    metadata = {
+        "annotations": wfl["metadata"].get("annotations", {}),
+    }
+
+    spec = {}
+
+    # if workflow is based on template. Copy steps from it
+    if "workflowTemplateRef" in wfl["spec"]:
+        for (key, value) in wfl["status"]["storedWorkflowTemplateSpec"].items():
+            if key == "workflowTemplateRef":
+                continue
+            spec[key] = value
+
+    # copy spec items. potentially overrides template spec elements
+    for (key, value) in wfl["spec"].items():
+        if key == "workflowTemplateRef":
+            continue
+        else:
+            spec[key] = value
+
+    reconstructed = {
+        "kind": "Workflow",
+        "metadata": metadata,
+        "spec": spec,
+    }
+
+    # remove empty keys from reconstructed workflow
+    def _clean(data):
+        if isinstance(data, dict):
+            return {k: _clean(v) for k, v in data.items() if v not in ([], {}, None, '')}
+        elif isinstance(data, list):
+            return [_clean(item) for item in data if item not in ([], {}, None, '')]
+        else:
+            return data
+    reconstructed = _clean(reconstructed)
+
+    return reconstructed
 
 def _recursive_artifact_reader(url: str, argo_token: str, path: str, verify_cert: bool = True, chunk_size=1024 * 1024):
     headers = {"Authorization": f"Bearer {argo_token}"}
