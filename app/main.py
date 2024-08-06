@@ -129,9 +129,6 @@ def notify(namespace: str, name: str, background_tasks: BackgroundTasks):
 
 @app.post("/workflow/check", dependencies=[Depends(check_auth)])
 async def check_workflow(file: UploadFile):
-    if not file.headers["content-type"] == "text/yaml":
-        raise HTTPException(status_code=400, detail="File format not supported")
-
     content = await file.read()
     content = yaml.load(content, Loader=yaml.CLoader)
     try:
