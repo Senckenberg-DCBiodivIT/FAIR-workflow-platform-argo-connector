@@ -141,12 +141,12 @@ async def check_workflow(file: UploadFile):
 
 
 @app.post("/workflow/submit", dependencies=[Depends(check_auth)])
-async def submit(file: UploadFile):
+async def submit(file: UploadFile, dryRun: bool = False):
     logger.info("Linting workflow...")
     checked_workflow = await check_workflow(file)
-    logger.info("Submitting workflow")
+    logger.info(f"Submitting workflow (dryRun:{dryRun})")
     try:
-        return argo.submit(settings.argo_base_url, settings.argo_token, checked_workflow, namespace=content["metadata"].get("namespace", settings.argo_default_namespace), verify_cert=False)
+        return argo.submit(settings.argo_base_url, settings.argo_token, checked_workflow, namespace=checked_workflow["metadata"].get("namespace", settings.argo_default_namespace), dry_run=dryRun, verify_cert=False)
     except argo_workflows.exceptions.ApiException as e:
         raise HTTPException(status_code=400, detail=json.loads(e.body))
 

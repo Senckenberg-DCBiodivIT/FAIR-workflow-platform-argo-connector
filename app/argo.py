@@ -159,10 +159,11 @@ def verify(host: str, token: str, workflow: dict[str: Any], namespace: str, veri
     model = workflow_service_api.IoArgoprojWorkflowV1alpha1WorkflowLintRequest(namespace=namespace, workflow=wfl)
     return api.lint_workflow(namespace, model, _check_return_type=False).to_dict()
 
-def submit(host: str, token: str, workflow: dict[str: Any], namespace: str, verify_cert: bool = True):
+def submit(host: str, token: str, workflow: dict[str: Any], namespace: str, dry_run: bool = False, verify_cert: bool = True):
     """ Submits a workflow to Argo """
     client = _build_argo_client(host, token, verify_cert=verify_cert)
     api = workflow_service_api.WorkflowServiceApi(client)
+
     wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration())
-    model = workflow_service_api.IoArgoprojWorkflowV1alpha1WorkflowCreateRequest(namespace=namespace, workflow=wfl, kind="Workflow")
+    model = workflow_service_api.IoArgoprojWorkflowV1alpha1WorkflowCreateRequest(namespace=namespace, workflow=wfl, kind="Workflow", server_dry_run=dry_run)
     return api.create_workflow(namespace, model, _check_return_type=False).to_dict
