@@ -17,3 +17,11 @@ class NotificationResponseModel(BaseModel):
     workflow_name: str = Field(None, description="Name of the workflow")
     workflow_namespace: str = Field(None, description="Namespace of the workflow")
     artifacts: List[Artifact]
+
+class WorkflowResponseModel(BaseModel):
+    class Parameter(BaseModel):
+        name: str
+        value: str
+    message: str = Field(None, description="Message from the workflow engine")
+    workflow: dict = Field(None, description="Workflow definition")
+    parameters: List[Parameter] = Field(None, description="Workflow parameters")

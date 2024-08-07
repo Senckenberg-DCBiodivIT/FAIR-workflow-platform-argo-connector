@@ -3,7 +3,7 @@ from copy import deepcopy
 
 import argo_workflows.exceptions
 import yaml
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, UploadFile, Path, File, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, UploadFile, Path, File, Query, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from app import cordra, argo
@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 import logging
 from typing import Annotated, Any
 
-from app.models import HealthModel, NotificationResponseModel
+from app.models import HealthModel, NotificationResponseModel, WorkflowResponseModel
 
 
 class Settings(BaseSettings):
@@ -142,7 +142,7 @@ def notify(
         "artifacts": [{"node_id": node_id, "path": path} for (node_id, _, path) in artifacts],
     })
 
-@app.post("/workflow/check", dependencies=[Depends(check_auth)])
+@app.post("/workflow/check", dependencies=[Depends(check_auth)], response_model=WorkflowResponseModel)
 async def check_workflow(
         file: UploadFile = File(..., description="Workflow file. Must be a valid Argo workflow in yaml format", media_type="text/yaml")
     ):
@@ -150,16 +150,22 @@ async def check_workflow(
     content = await file.read()
     content = yaml.load(content, Loader=yaml.CLoader)
     try:
-        return argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=content["metadata"].get("namespace", settings.argo_default_namespace), verify_cert=False)
+        checked_workflow = argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=content["metadata"].get("namespace", settings.argo_default_namespace), verify_cert=False)
+        workflow_parameters = [{"name": param["name"], "value": param["value"]} for param in checked_workflow.get("spec", {}).get("arguments", {}).get("parameters", [])]
+        return {
+            "workflow": checked_workflow,
+            "parameters": workflow_parameters
+        }
     except argo_workflows.exceptions.ApiException as e:
         raise HTTPException(status_code=400, detail=json.loads(e.body))
 
-@app.post("/workflow/submit", dependencies=[Depends(check_auth)])
+@app.post("/workflow/submit", dependencies=[Depends(check_auth)], response_model=WorkflowResponseModel)
 async def submit(
         file: UploadFile = File(..., description="Workflow file. Must be a valid Argo workflow in yaml format", media_type="text/yaml"),
         dryRun: bool = Query(False, description="Whether to perform a dry run of the workflow or actually submit it"),
         submitterName: str = Query(..., description="Name of the user submitting the workflow"),
         submitterOrcid: str = Query(..., description="Orcid of the user submitting the workflow", examples=["0000-1234-4567-8910"], regex=r"[0-9A-Z]{4}\-[0-9A-Z]{4}\-[0-9A-Z]{4}\-[0-9A-Z]{4}"),
+        overrideParameters: str = Query(None, description="Override workflow parameters. Accepts a comma separated list of name:value pairs", examples=["param1=value1,param2=value2"])
     ):
     """
      Submit a new workflow to the workflow engine. This verifies that the workflow is a valid workflow and then submits it for processing.
@@ -169,18 +175,32 @@ async def submit(
     content = await file.read()
     content = yaml.load(content, Loader=yaml.CLoader)
 
-    logger.info("Path workflow with submitter data")
+    logger.info("Patch workflow with submitter data")
     if not "metadata" in content: content["metadata"] = {}
     if not "annotations" in content["metadata"]: content["metadata"]["annotations"] = {}
     content["metadata"]["annotations"]["argo-connector/submitterId1"] = submitterOrcid
     content["metadata"]["annotations"]["argo-connector/submitterName1"] = submitterName
+
+    # Override workflow parameters
+    if overrideParameters:
+        parameter_list = overrideParameters.split(",")
+        for key, value in [param.split(":", maxsplit=2) for param in parameter_list]:
+            for i in range(len(content["spec"]["arguments"]["parameters"])):
+                if (content["spec"]["arguments"]["parameters"][i]["name"] == key):
+                    content["spec"]["arguments"]["parameters"][i]["value"] = value
+                    break
 
     try:
         logger.info("Linting workflow...")
         checked_workflow = argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=content["metadata"].get("namespace", settings.argo_default_namespace), verify_cert=False)
         logger.info(f"Submitting workflow (dryRun:{dryRun})")
         argo.submit(settings.argo_base_url, settings.argo_token, deepcopy(checked_workflow), namespace=checked_workflow["metadata"].get("namespace", settings.argo_default_namespace), dry_run=dryRun, verify_cert=False)
-        return checked_workflow
+
+        workflow_parameters = [{"name": param["name"], "value": param["value"]} for param in checked_workflow.get("spec", {}).get("arguments", {}).get("parameters", [])]
+        return {
+            "workflow": checked_workflow,
+            "parameters": workflow_parameters
+        }
     except argo_workflows.exceptions.ApiException as e:
         raise HTTPException(status_code=400, detail=json.loads(e.body))
 
