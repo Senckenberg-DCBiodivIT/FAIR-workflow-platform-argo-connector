@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 
 import argo_workflows.exceptions
 import yaml
@@ -8,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app import cordra, argo
 from fastapi.responses import JSONResponse
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from app.models import HealthModel, NotificationResponseModel
 
@@ -153,21 +154,31 @@ async def check_workflow(
     except argo_workflows.exceptions.ApiException as e:
         raise HTTPException(status_code=400, detail=json.loads(e.body))
 
-
 @app.post("/workflow/submit", dependencies=[Depends(check_auth)])
 async def submit(
         file: UploadFile = File(..., description="Workflow file. Must be a valid Argo workflow in yaml format", media_type="text/yaml"),
         dryRun: bool = Query(False, description="Whether to perform a dry run of the workflow or actually submit it"),
+        submitterName: str = Query(..., description="Name of the user submitting the workflow"),
+        submitterOrcid: str = Query(..., description="Orcid of the user submitting the workflow", examples=["0000-1234-4567-8910"], regex=r"[0-9A-Z]{4}\-[0-9A-Z]{4}\-[0-9A-Z]{4}\-[0-9A-Z]{4}"),
     ):
     """
      Submit a new workflow to the workflow engine. This verifies that the workflow is a valid workflow and then submits it for processing.
      Returns the response from the workflow engine
      """
-    logger.info("Linting workflow...")
-    checked_workflow = await check_workflow(file)
-    logger.info(f"Submitting workflow (dryRun:{dryRun})")
+
+    content = await file.read()
+    content = yaml.load(content, Loader=yaml.CLoader)
+
+    logger.info("Path workflow with submitter data")
+    content["metadata"]["annotations"]["argo-connector/submitterId1"] = submitterOrcid
+    content["metadata"]["annotations"]["argo-connector/submitterName1"] = submitterName
+
     try:
-        return argo.submit(settings.argo_base_url, settings.argo_token, checked_workflow, namespace=checked_workflow["metadata"].get("namespace", settings.argo_default_namespace), dry_run=dryRun, verify_cert=False)
+        logger.info("Linting workflow...")
+        checked_workflow = argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=content["metadata"].get("namespace", settings.argo_default_namespace), verify_cert=False)
+        logger.info(f"Submitting workflow (dryRun:{dryRun})")
+        argo.submit(settings.argo_base_url, settings.argo_token, deepcopy(checked_workflow), namespace=checked_workflow["metadata"].get("namespace", settings.argo_default_namespace), dry_run=dryRun, verify_cert=False)
+        return checked_workflow
     except argo_workflows.exceptions.ApiException as e:
         raise HTTPException(status_code=400, detail=json.loads(e.body))
 
