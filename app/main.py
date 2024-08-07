@@ -184,7 +184,7 @@ async def submit(
     # Override workflow parameters
     if overrideParameters:
         parameter_list = overrideParameters.split(",")
-        for key, value in [param.split(":", maxsplit=2) for param in parameter_list]:
+        for key, value in [param.split(":", maxsplit=1) for param in parameter_list]:
             for i in range(len(content["spec"]["arguments"]["parameters"])):
                 if (content["spec"]["arguments"]["parameters"][i]["name"] == key):
                     content["spec"]["arguments"]["parameters"][i]["value"] = value
