@@ -167,8 +167,14 @@ def submit(host: str, token: str, workflow: dict[str: Any], namespace: str, dry_
     client = _build_argo_client(host, token, verify_cert=verify_cert)
     api = workflow_service_api.WorkflowServiceApi(client)
 
-    if not "generatedName" in workflow["metadata"] and not "name" in workflow["metadata"]:
+    # make sure name is deleted on resubmissions
+    if "name" in workflow["metadata"]:
+        del workflow["metadata"]["name"]
+
+    # generate a random name if there is no name generator
+    if not "generatedName" in workflow["metadata"]:
         workflow["metadata"]["name"] = str(uuid.uuid4())
+
     wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration())
     model = workflow_service_api.IoArgoprojWorkflowV1alpha1WorkflowCreateRequest(namespace=namespace, workflow=wfl, kind="Workflow", server_dry_run=dry_run)
     return api.create_workflow(namespace, model, _check_return_type=False).to_dict
