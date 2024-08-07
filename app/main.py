@@ -156,8 +156,12 @@ async def check_workflow(
             "workflow": checked_workflow,
             "parameters": workflow_parameters
         }
-    except argo_workflows.exceptions.ApiException as e:
-        raise HTTPException(status_code=400, detail=json.loads(e.body))
+    except argo_workflows.exceptions.OpenApiException as e:
+        if isinstance(e, argo_workflows.exceptions.ApiException):
+            detail = json.loads(e.body)
+        else:
+            detail = str(e)
+        raise HTTPException(status_code=400, detail=detail)
 
 @app.post("/workflow/submit", dependencies=[Depends(check_auth)], response_model=WorkflowResponseModel)
 async def submit(
