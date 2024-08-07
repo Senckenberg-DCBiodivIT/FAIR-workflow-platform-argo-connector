@@ -31,19 +31,20 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
 
     created_ids = {}
     try:
-        # add authors
-        logger.debug("Creating authors")
-        author1 = cordra.CordraObject.create(obj_type="Person", obj_json={
-            "name": "Daniel Bauer",
-            "identifier": "https://orcid.org/0000-0001-9447-460X",
-        }, **upload_kwargs)
-        created_ids[author1["@id"]] = "Person"
+        annotations = reconstructed_wfl["metadata"]["annotations"]
+        create_action_author = None
+        for key, value in annotations.items():
+            if key.startswith("argo-connector/submitterId"):
+                number = key.split("argo-connector/submitterId")[1]
 
-        author2 = cordra.CordraObject.create(obj_type="Person", obj_json={
-            "name": "Erik Kusch",
-            "identifier": "https://orcid.org/0000-0002-4984-7646"
-        }, **upload_kwargs)
-        created_ids[author2["@id"]] = "Person"
+                author_id = "https://orcid.org/" + wfl["metadata"]["annotations"][f"argo-connector/submitterId{number}"]
+                author_properties = {"identifier": author_id}
+                if f"argo-connector/submitterName{number}" in wfl["metadata"]["annotations"]:
+                    author_properties["name"] = wfl["metadata"]["annotations"][f"argo-connector/submitterName{number}"]
+                author = cordra.CordraObject.create(obj_type="Person", obj_json=author_properties, **upload_kwargs)
+                if number == "1":
+                    create_action_author = author
+                created_ids[author["@id"]] = "Person"
 
         # upload files
         logger.debug("Creating file objects")
@@ -134,15 +135,17 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                     if end_time is None or node_end_time > end_time:
                         end_time = node_end_time
 
+        action_properties = {
+            "result": [id for id in created_ids if created_ids[id] == "FileObject"],
+            "startTime": start_time.strftime(date_format),
+            "endTime": end_time.strftime(date_format),
+            "instrument": wfl_obj["@id"]
+        }
+        if create_action_author is not None:
+            action_properties["agent"] = create_action_author["@id"]
         action = cordra.CordraObject.create(
             obj_type="CreateAction",
-            obj_json={
-                "agent": author1["@id"],
-                "result": [id for id in created_ids if created_ids[id] == "FileObject"],
-                "startTime": start_time.strftime(date_format),
-                "endTime": end_time.strftime(date_format),
-                "instrument": wfl_obj["@id"]
-            },
+            obj_json=action_properties,
             **upload_kwargs
         )
         created_ids[action["@id"]] = "CreateAction"
@@ -150,7 +153,7 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
         properties = {
             "name": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/title", wfl["metadata"]["name"]),
             "description": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/description", None),
-            "author": [author1["@id"], author2["@id"]],
+            "author": [id for id in created_ids if created_ids[id] == "Person"],
             "hasPart": [id for id in created_ids if created_ids[id] == "FileObject" or created_ids[id] == "Workflow"],
             "mentions": [action["@id"]],
             "mainEntity": wfl_obj["@id"]

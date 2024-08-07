@@ -170,6 +170,8 @@ async def submit(
     content = yaml.load(content, Loader=yaml.CLoader)
 
     logger.info("Path workflow with submitter data")
+    if not "metadata" in content: content["metadata"] = {}
+    if not "annotations" in content["metadata"]: content["metadata"]["annotations"] = {}
     content["metadata"]["annotations"]["argo-connector/submitterId1"] = submitterOrcid
     content["metadata"]["annotations"]["argo-connector/submitterName1"] = submitterName
 
