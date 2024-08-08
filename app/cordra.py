@@ -100,6 +100,29 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                 logger.debug("File ingested")
             created_ids[file_obj["@id"]] = "FileObject"
 
+        logger.debug("Create workflow and action parameters")
+        parameters = reconstructed_wfl.get("spec", {}).get("arguments", {}).get("parameters", [])
+        for parameter in parameters:
+            parameter_json = {
+                "name": parameter["name"],
+            }
+            if "description" in parameter:
+                parameter_json["description"] = parameter["description"]
+            parameter_obj = cordra.CordraObject.create(
+                obj_type="FormalParameter",
+                obj_json=parameter_json,
+                **upload_kwargs
+            )
+            created_ids[parameter_obj["@id"]] = "FormalParameter"
+            if "value" in parameter:
+                parameter_json["value"] = parameter["value"]
+                property_obj = cordra.CordraObject.create(
+                    obj_type="PropertyValue",
+                    obj_json=parameter_json,
+                    **upload_kwargs
+                )
+                created_ids[property_obj["@id"]] = "PropertyValue"
+
         logger.debug("Create workflow")
         with tempfile.NamedTemporaryFile(delete=True,
                                          prefix=f"argo-workflow-tmp-") as tmp_file:
@@ -113,13 +136,15 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                     "encodingFormat": "text/yaml",
                     "contentUrl": "workflow.yaml",
                     "description": "Argo workflow definition",
-                    "programmingLanguage": "https://argoproj.github.io/workflows"
+                    "programmingLanguage": "https://argoproj.github.io/workflows",
+                    "input": [id for id, object_type in created_ids.items() if object_type == "FormalParameter"],
                 },
                 payloads={"workflow.yaml": ("workflow.yaml", open(tmp_file.name, "rb"))},
                 **upload_kwargs
             )
             logger.debug("Workflow ingested")
             created_ids[wfl_obj["@id"]] = "Workflow"
+
 
         logger.debug("Create CreateAction")
         date_format = "%Y-%m-%dT%H:%M:%SZ"
@@ -139,7 +164,8 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
             "result": [id for id in created_ids if created_ids[id] == "FileObject"],
             "startTime": start_time.strftime(date_format),
             "endTime": end_time.strftime(date_format),
-            "instrument": wfl_obj["@id"]
+            "instrument": wfl_obj["@id"],
+            "object": [id for id, object_type in created_ids.items() if object_type == "PropertyValue"],
         }
         if create_action_author is not None:
             action_properties["agent"] = create_action_author["@id"]
