@@ -97,16 +97,6 @@ def reconstruct_workflow_from_workflowinfo(wfl: dict[str: Any]) -> dict[str: Any
         "spec": spec,
     }
 
-    # remove empty keys from reconstructed workflow
-    def _clean(data):
-        if isinstance(data, dict):
-            return {k: _clean(v) for k, v in data.items() if v not in ([], {}, None, '')}
-        elif isinstance(data, list):
-            return [_clean(item) for item in data if item not in ([], {}, None, '')]
-        else:
-            return data
-    reconstructed = _clean(reconstructed)
-
     return reconstructed
 
 def _recursive_artifact_reader(url: str, argo_token: str, path: str, verify_cert: bool = True, chunk_size=1024 * 1024):
