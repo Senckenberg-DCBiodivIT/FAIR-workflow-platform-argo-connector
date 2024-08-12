@@ -3,9 +3,10 @@ from copy import deepcopy
 
 import argo_workflows.exceptions
 import yaml
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, UploadFile, Path, File, Query, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, UploadFile, Path, File, Form
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AnyUrl, ValidationError
 from app import cordra, argo
 from fastapi.responses import JSONResponse
 import logging
@@ -166,10 +167,14 @@ async def check_workflow(
 @app.post("/workflow/submit", dependencies=[Depends(check_auth)], response_model=WorkflowResponseModel)
 async def submit(
         file: UploadFile = File(..., description="Workflow file. Must be a valid Argo workflow in yaml format", media_type="text/yaml"),
-        dryRun: bool = Query(False, description="Whether to perform a dry run of the workflow or actually submit it"),
-        submitterName: str = Query(..., description="Name of the user submitting the workflow"),
-        submitterOrcid: str = Query(..., description="Orcid of the user submitting the workflow", examples=["0000-1234-4567-8910"], regex=r"[0-9A-Z]{4}\-[0-9A-Z]{4}\-[0-9A-Z]{4}\-[0-9A-Z]{4}"),
-        overrideParameters: str = Query(None, description="Override workflow parameters. Accepts a comma separated list of name:value pairs", examples=["param1=value1,param2=value2"])
+        submitterName: str = Form(..., description="Name of the user submitting the workflow"),
+        submitterOrcid: str = Form(..., description="Orcid of the user submitting the workflow", examples=["0000-1234-4567-8910"], regex=r"[0-9A-Z]{4}\-[0-9A-Z]{4}\-[0-9A-Z]{4}\-[0-9A-Z]{4}"),
+        license: AnyUrl = Form(None, description="License of the workflow output"),
+        overrideParameters: str = Form(None, description="Override workflow parameters. Accepts a comma separated list of name:value pairs", examples=["param1=value1,param2=value2"]),
+        title: str = Form(None, description="Title of the workflow"),
+        description: str = Form(None, description="Description of the workflow"),
+        keywords: str = Form(None, description="Keywords of the workflow", examples=["keyword1,keyword2,keyword3"]),
+        dryRun: bool = Form(False, description="Whether to perform a dry run of the workflow or actually submit it"),
     ):
     """
      Submit a new workflow to the workflow engine. This verifies that the workflow is a valid workflow and then submits it for processing.
@@ -184,6 +189,14 @@ async def submit(
     if not "annotations" in content["metadata"]: content["metadata"]["annotations"] = {}
     content["metadata"]["annotations"]["argo-connector/submitterId1"] = submitterOrcid
     content["metadata"]["annotations"]["argo-connector/submitterName1"] = submitterName
+    if license is not None:
+        content["metadata"]["annotations"]["argo-connector/license"] = str(license)
+    if keywords is not None:
+        content["metadata"]["annotations"]["argo-connector/keywords"] = ",".join([x.strip() for x in keywords.split(",")])
+    if title is not None:
+        content["metadata"]["annotations"]["workflows.argoproj.io/title"] = title
+    if description is not None:
+        content["metadata"]["annotations"]["workflows.argoproj.io/description"] = description
 
     # Override workflow parameters
     if overrideParameters:

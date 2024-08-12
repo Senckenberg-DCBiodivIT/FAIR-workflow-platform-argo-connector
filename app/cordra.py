@@ -29,11 +29,12 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
         "verify": False
     }
 
+    workflow_annotations = reconstructed_wfl["metadata"]["annotations"]
+
     created_ids = {}
     try:
-        annotations = reconstructed_wfl["metadata"]["annotations"]
         create_action_author = None
-        for key, value in annotations.items():
+        for key, value in workflow_annotations.items():
             if key.startswith("argo-connector/submitterId"):
                 number = key.split("argo-connector/submitterId")[1]
 
@@ -182,40 +183,10 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
             "author": [id for id in created_ids if created_ids[id] == "Person"],
             "hasPart": [id for id in created_ids if created_ids[id] == "FileObject" or created_ids[id] == "Workflow"],
             "mentions": [action["@id"]],
-            "mainEntity": wfl_obj["@id"]
+            "mainEntity": wfl_obj["@id"],
+            "license": workflow_annotations.get("argo-connector/license", None),
+            "keywords": [keyword for keyword in workflow_annotations.get("argo-connector/keywords", "").split(",") if keyword != ""],
         }
-
-        # TODO derive these from the workflow somehow
-        if wfl["metadata"]["name"].startswith("modgp-"):
-            logger.info("This is a modgp workflow. Applying hardcoded values")
-
-            # create action
-            logger.debug("Create SoftwareApplication")
-            # instrument = cordra.CordraObject.create(
-            #     obj_type="SoftwareApplication",
-            #     obj_json={
-            #         "name": "ModGP",
-            #         "identifier": "https://github.com/BioDT/uc-CWR"
-            #     },
-            #     **upload_kwargs
-            # )
-            # created_ids[instrument["@id"]] = "SoftwareApplication"
-            #
-            # logger.debug("Update action for instrument")
-            # cordra.CordraObject.update(
-            #     obj_id=action["@id"],
-            #     obj_json=json_merge_patch.merge(action, {"instrument": instrument["@id"]}),
-            #     **upload_kwargs
-            # )
-
-            species = next(filter(lambda x: x["name"] == "species", wfl["spec"]["arguments"]["parameters"]))["value"]
-            dataset_patch = {
-                "name": f"Species distribution models for {species}",
-                "description": f"Species distribution model calculated with ModGP for {species}",
-                "keywords": ["GBIF", "Occurrence", "Biodiversity", "Observation", "ModGP", "SDM"],
-                "license": "https://spdx.org/licenses/CC-BY-SA-2.0",
-            }
-            properties = json_merge_patch.merge(properties, dataset_patch)
 
         logger.debug("Create Dataset")
         dataset = cordra.CordraObject.create(obj_type="Dataset", obj_json=properties, **upload_kwargs)
