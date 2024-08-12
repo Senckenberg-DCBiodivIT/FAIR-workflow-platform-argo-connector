@@ -10,9 +10,9 @@ from pydantic import AnyUrl, ValidationError
 from app import cordra, argo
 from fastapi.responses import JSONResponse
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, List
 
-from app.models import HealthModel, NotificationResponseModel, WorkflowResponseModel
+from app.models import HealthModel, NotificationResponseModel, WorkflowResponseModel, WorkflowListResponseModel
 
 
 class Settings(BaseSettings):
@@ -142,6 +142,29 @@ def notify(
         "workflow_namespace": wfl["metadata"]["namespace"],
         "artifacts": [{"node_id": node_id, "path": path} for (node_id, _, path) in artifacts],
     })
+
+
+@app.get("/workflow/list", dependencies=[Depends(check_auth)], response_model=List[WorkflowListResponseModel])
+def list():
+    """
+    Lists workflows
+    """
+    items = []
+    for item in argo.list_workflows(settings.argo_base_url, settings.argo_token, verify_cert=False)["items"]:
+        annotations = item["metadata"]["annotations"]
+        items.append({
+            "workflow_name": item["metadata"]["name"],
+            "uid": item["metadata"]["uid"],
+            "name": annotations.get("workflows.argoproj.io/title", None),
+            "status": item["status"]["phase"],
+            "createdAt": item["metadata"]["creationTimestamp"],
+            "startedAt": item["status"]["startedAt"],
+            "finishedAt": item["status"]["finishedAt"],
+            "submitterName": annotations.get("argo-connector/submitterName1", None),
+            "submitterOrcid": annotations.get("argo-connector/submitterId1", None),
+        })
+    return items
+
 
 @app.post("/workflow/check", dependencies=[Depends(check_auth)], response_model=WorkflowResponseModel)
 async def check_workflow(

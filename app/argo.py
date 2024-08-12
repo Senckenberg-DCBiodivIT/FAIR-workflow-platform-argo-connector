@@ -1,6 +1,6 @@
 import json
 import uuid
-from typing import Any
+from typing import Any, List
 
 import argo_workflows
 from argo_workflows.api import workflow_service_api
@@ -178,3 +178,9 @@ def submit(host: str, token: str, workflow: dict[str: Any], namespace: str, dry_
     wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration())
     model = workflow_service_api.IoArgoprojWorkflowV1alpha1WorkflowCreateRequest(namespace=namespace, workflow=wfl, kind="Workflow", server_dry_run=dry_run)
     return api.create_workflow(namespace, model, _check_return_type=False).to_dict
+
+def list_workflows(host: str, token: str, verify_cert: bool = True) -> List[dict[str: Any]]:
+    """ Lists workflows from Argo """
+    client = _build_argo_client(host, token, verify_cert=verify_cert)
+    api = workflow_service_api.WorkflowServiceApi(client)
+    return api.list_workflows(namespace="argo", _check_return_type=False).to_dict()

@@ -25,3 +25,14 @@ class WorkflowResponseModel(BaseModel):
     message: str = Field(None, description="Message from the workflow engine")
     workflow: dict = Field(None, description="Workflow definition")
     parameters: List[Parameter] = Field(None, description="Workflow parameters")
+
+class WorkflowListResponseModel(BaseModel):
+    workflow_name: str = Field(..., description="Internal name of the workflow")
+    uid: str = Field(..., description="Internal UID of the workflow")
+    name: str|None = Field(None, description="Name of the workflow")
+    status: str = Field(..., description="Workflow status")
+    createdAt: str = Field(..., description="Workflow creation time")
+    startedAt: str = Field(..., description="Workflow started time")
+    finishedAt: str|None = Field(..., description="Workflow finished time")
+    submitterName: str|None = Field(None, description="Name of the user submitting the workflow")
+    submitterOrcid: str|None = Field(None, description="Orcid of the user submitting the workflow")
