@@ -1,4 +1,5 @@
 import json
+import sys
 import uuid
 from typing import Any, List
 
@@ -70,7 +71,6 @@ def parse_artifact_list(wfl: dict[str: Any]) -> list[tuple[str, str, str]]:
     return artifacts_list
 
 def reconstruct_workflow_from_workflowinfo(wfl: dict[str: Any]) -> dict[str: Any]:
-
     metadata = {
         "annotations": wfl["metadata"].get("annotations", {}),
     }
@@ -147,7 +147,7 @@ def verify(host: str, token: str, workflow: dict[str: Any], namespace: str, veri
     client = _build_argo_client(host, token, verify_cert=verify_cert)
     api = workflow_service_api.WorkflowServiceApi(client)
 
-    wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration())
+    wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration(), _check_type=False)
     model = workflow_service_api.IoArgoprojWorkflowV1alpha1WorkflowLintRequest(namespace=namespace, workflow=wfl)
     response = api.lint_workflow(namespace, model, _check_return_type=False).to_dict()
     return response
@@ -165,7 +165,7 @@ def submit(host: str, token: str, workflow: dict[str: Any], namespace: str, dry_
     if not "generatedName" in workflow["metadata"]:
         workflow["metadata"]["name"] = str(uuid.uuid4())
 
-    wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration())
+    wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration(), _check_type=False)
     model = workflow_service_api.IoArgoprojWorkflowV1alpha1WorkflowCreateRequest(namespace=namespace, workflow=wfl, kind="Workflow", server_dry_run=dry_run)
     return api.create_workflow(namespace, model, _check_return_type=False).to_dict
 
