@@ -196,10 +196,8 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
         logger.debug("Updating files backref to dataset/action")
         for cordra_id in [id for id in created_ids if created_ids[id] == "FileObject"]:
             obj = cordra.CordraObject.read(obj_id=cordra_id, **upload_kwargs)
-            if ("partOf" not in obj) or (obj["partOf"] is None):
-                obj["partOf"] = [dataset["@id"]]
-            if action is not None:
-                obj["resultOf"] = action["@id"]
+            if ("isPartOf" not in obj) or (obj["isPartOf"] is None):
+                obj["isPartOf"] = [dataset["@id"]]
             cordra.CordraObject.update(obj_id=cordra_id, obj_json=obj, **upload_kwargs)
 
         logger.info(f"Dataset ingested. Cordra ID: {dataset['@id']} ({host}/objects/{dataset['@id']})")
