@@ -13,6 +13,7 @@ class NotificationResponseModel(BaseModel):
         path: str
 
     status: str = Field("accepted", description="Accepted or Rejected")
+    skip_content: bool = Field(False, description="Whether to perform a dry run of the object inserting or actually submit data to cordra")
     workflow_status: str = Field("Succeeded", description="Current state of the workflow")
     workflow_name: str = Field(None, description="Name of the workflow")
     workflow_namespace: str = Field(None, description="Namespace of the workflow")

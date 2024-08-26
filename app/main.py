@@ -3,14 +3,14 @@ from copy import deepcopy
 
 import argo_workflows.exceptions
 import yaml
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, UploadFile, Path, File, Form
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, UploadFile, Path, File, Form, Query
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import AnyUrl, ValidationError
+from pydantic import AnyUrl
 from app import cordra, argo
 from fastapi.responses import JSONResponse
 import logging
-from typing import Annotated, Any, List
+from typing import Annotated, List
 
 from app.models import HealthModel, NotificationResponseModel, WorkflowResponseModel, WorkflowListResponseModel
 
@@ -46,7 +46,7 @@ def check_auth(credentials: Annotated[HTTPBasicCredentials, Depends(security)]):
     if not (credentials.username == settings.auth_username and credentials.password == settings.auth_password):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
-def process_workflow(name: str, namespace: str):
+def process_workflow(name: str, namespace: str, skip_content: bool):
     logger.info(f"Ingesting {namespace}/{name}")
     wfl = argo.get_workflow_information(settings.argo_base_url, settings.argo_token, namespace, name, verify_cert=False)
     artifacts = argo.parse_artifact_list(wfl)
@@ -60,7 +60,7 @@ def process_workflow(name: str, namespace: str):
         namespace=namespace,
         workflow_name=name,
         artifact_list=artifacts,
-        verify_cert=False
+        verify_cert=False,
     )
     cordra.create_dataset_from_workflow_artifacts(
         host=settings.cordra_base_url,
@@ -69,7 +69,8 @@ def process_workflow(name: str, namespace: str):
         wfl=wfl,
         artifact_stream_iterator=artifact_stream_iterator,
         reconstructed_wfl=reconstructed_wfl,
-        file_max_size=settings.cordra_max_file_size
+        file_max_size=settings.cordra_max_file_size,
+        skip_content=skip_content
     )
     logger.info(f"Successfully ingested {namespace}/{name}")
 
@@ -93,7 +94,8 @@ def healthcheck():
 def notify(
         background_tasks: BackgroundTasks,
         namespace: str = Path(..., description="Namespace of the workflow"),
-        name: str = Path(..., description="Name of the workflow")
+        name: str = Path(..., description="Name of the workflow"),
+        skip_content: str = Query(False, description="If set, does not download artifacts, but insert empty files for debugging purposes")
     ):
     """
     Notify the connector about a finished argo workflow. This will cause the workflow to be ingested.
@@ -133,7 +135,7 @@ def notify(
         return HTTPException(status_code=400, detail="No artifacts found")
 
     logger.info(f"Starting background task to process {namespace}/{name}")
-    background_tasks.add_task(process_workflow, name, namespace)
+    background_tasks.add_task(process_workflow, name, namespace, skip_content)
 
     return JSONResponse(status_code=202, content={
         "status": "accepted",
@@ -141,6 +143,7 @@ def notify(
         "workflow_name": wfl["metadata"]["name"],
         "workflow_namespace": wfl["metadata"]["namespace"],
         "artifacts": [{"node_id": node_id, "path": path} for (node_id, _, path) in artifacts],
+        "skip_content": skip_content,
     })
 
 

@@ -21,17 +21,18 @@ def check_health(host: str, user: str, password: str) -> bool|str:
 
     return True
 
-def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, wfl: dict[str: Any], artifact_stream_iterator: Generator, reconstructed_wfl: dict[str: Any], file_max_size: int = 100*1024*1024) -> str:
+def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, wfl: dict[str: Any], artifact_stream_iterator: Generator, reconstructed_wfl: dict[str: Any], skip_content: bool = False, file_max_size: int = 100*1024*1024) -> str:
     upload_kwargs = {
         "host": host,
         "username": user,
         "password": password,
-        "verify": False
+        "verify": False,
     }
 
     workflow_annotations = reconstructed_wfl["metadata"]["annotations"]
 
     created_ids = {}
+    created_files = {}
     try:
         create_action_author = None
         for key, value in workflow_annotations.items():
@@ -53,36 +54,40 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
 
             logger.debug("Creating FileObject from " + file_name)
             relative_path = file_name
-
             # Write file content into temporary file
             # Streaming the file directly into cordra would be better, but this didnt work for me.
             with tempfile.NamedTemporaryFile(delete=True,
                                              prefix=f"argo-artifact-tmp-{os.path.basename(file_name)}-") as tmp_file:
-                try:
-                    logger.debug("Downloading content to temp file: " + tmp_file.name)
-                    for chunk in content_iterator:
-                        if chunk:
-                            tmp_file.write(chunk)
-                except Exception as e:
-                    logger.error("Failed to download file content: " + str(e))
+
+                if not skip_content:
+                    try:
+                        logger.debug("Downloading content to temp file: " + tmp_file.name)
+                        for chunk in content_iterator:
+                            if chunk:
+                                tmp_file.write(chunk)
+                    except Exception as e:
+                        logger.error("Failed to download file content: " + str(e))
+                        content_iterator.close()
+                        raise e
+                    tmp_file.flush()
+                    file_size = Path(tmp_file.name).stat().st_size
+
+                    logger.debug(f"Download done ({file_size / 1024 / 1024:.2f} MB)")
+
+                    # Cordra has issues with huge files
+                    if file_size > file_max_size:
+                        logger.warning(f"File size is {file_size / 1024 / 1024:.2f} MB, which is too large to upload. Skipping...")
+                        continue
+
+                    # figure out file encoding
+                    try:
+                        encoding_format = magic.from_file(tmp_file.name, mime=True)
+                        logger.debug("Infered encoding format: " + encoding_format)
+                    except magic.MagicException as e:
+                        logger.warning(f"Failed to get encoding format for {file_name}")
+                        encoding_format = None
+                else:
                     content_iterator.close()
-                    raise e
-                tmp_file.flush()
-                file_size = Path(tmp_file.name).stat().st_size
-
-                logger.debug(f"Download done ({file_size / 1024 / 1024:.2f} MB)")
-
-                # Cordra has issues with huge files
-                if file_size > file_max_size:
-                    logger.warning(f"File size is {file_size / 1024 / 1024:.2f} MB, which is too large to upload. Skipping...")
-                    continue
-
-                # figure out file encoding
-                try:
-                    encoding_format = magic.from_file(tmp_file.name, mime=True)
-                    logger.debug("Infered encoding format: " + encoding_format)
-                except magic.MagicException as e:
-                    logger.warning(f"Failed to get encoding format for {file_name}")
                     encoding_format = None
 
                 # write object
@@ -100,6 +105,38 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                 )
                 logger.debug("File ingested")
             created_ids[file_obj["@id"]] = "FileObject"
+            created_files[file_obj["@id"]] = file_obj["contentUrl"]
+
+        # For ModGP, we want to create one dataset per species.
+        # The workflow cannot produce that, so we create them manually based on the folder structure
+        # For ModGP Workflows (which is detected based on the word ModGP in file paths),
+        # we create one nested dataset per species subfolder in Exports/ModGP,
+        # and remove corresponding files from the root dataset.
+        is_modGP = len(list(filter(lambda path: "Exports/ModGP" in path, created_files.values()))) > 0
+        if is_modGP:
+            nested_dataset_properties = {
+                "author": [id for id in created_ids if created_ids[id] == "Person"],
+                "license": workflow_annotations.get("argo-connector/license", None),
+                "keywords": [keyword for keyword in workflow_annotations.get("argo-connector/keywords", "").split(",") if keyword != ""],
+            }
+
+            nested_datasets_items = {}
+            for id, file_path in [(id, created_files[id]) for id in created_files]:
+                splitted_path = file_path.split("/")
+                if len(splitted_path) > 6 and splitted_path[2] == "Exports" and splitted_path[3] == "ModGP":
+                    genus = splitted_path[4]
+                    species = splitted_path[5]
+                    dataset_name = f"{genus} {species}"
+                    nested_datasets_items[dataset_name] = nested_datasets_items.get(dataset_name, []) + [id]
+
+            for nested_dataset_name, nested_dataset_items in nested_datasets_items.items():
+                nested_dataset = cordra.CordraObject.create(obj_type="Dataset", obj_json=nested_dataset_properties | {"name": nested_dataset_name, "hasPart": nested_dataset_items}, **upload_kwargs)
+                created_ids[nested_dataset["@id"]] = "Dataset"
+
+            # rewrite created ids to only inclued files not present in the nested datasets
+            for ids in nested_datasets_items.values():
+                for id in ids:
+                    del created_ids[id]
 
         logger.debug("Create workflow and action parameters")
         parameters = reconstructed_wfl.get("spec", {}).get("arguments", {}).get("parameters", [])
@@ -162,7 +199,7 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                         end_time = node_end_time
 
         action_properties = {
-            "result": [id for id in created_ids if created_ids[id] == "FileObject"],
+            "result": [id for id in created_ids if created_ids[id] in ["FileObject", "Dataset"]],
             "startTime": start_time.strftime(date_format),
             "endTime": end_time.strftime(date_format),
             "instrument": wfl_obj["@id"],
@@ -181,7 +218,7 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
             "name": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/title", wfl["metadata"]["name"]),
             "description": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/description", None),
             "author": [id for id in created_ids if created_ids[id] == "Person"],
-            "hasPart": [id for id in created_ids if created_ids[id] == "FileObject" or created_ids[id] == "Workflow"],
+            "hasPart": [id for id in created_ids if created_ids[id] in ["FileObject", "Workflow", "Dataset"]],
             "mentions": [action["@id"]],
             "mainEntity": wfl_obj["@id"],
             "license": workflow_annotations.get("argo-connector/license", None),
@@ -194,13 +231,13 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
 
         # Update files parfOf/resultOf to point to dataset/action
         logger.debug("Updating files backref to dataset/action")
-        for cordra_id in [id for id in created_ids if created_ids[id] == "FileObject"]:
+        for cordra_id in [id for id in created_ids if created_ids[id] in ["FileObject", "Dataset"] and id != dataset["@id"]]:
             obj = cordra.CordraObject.read(obj_id=cordra_id, **upload_kwargs)
             if ("isPartOf" not in obj) or (obj["isPartOf"] is None):
                 obj["isPartOf"] = [dataset["@id"]]
             cordra.CordraObject.update(obj_id=cordra_id, obj_json=obj, **upload_kwargs)
 
-        logger.info(f"Dataset ingested. Cordra ID: {dataset['@id']} ({host}/objects/{dataset['@id']})")
+        logger.info(f"Dataset ingested. Cordra ID: {dataset['@id']} ({host}/#objects/{dataset['@id']})")
         return dataset["@id"]
     except Exception as e:
         print(f"Failed to create corda dataset: {type(e)} {str(e)}. Cleaning up uploaded objects")
