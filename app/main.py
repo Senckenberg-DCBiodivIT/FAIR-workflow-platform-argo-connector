@@ -95,13 +95,12 @@ def notify(
         background_tasks: BackgroundTasks,
         namespace: str = Path(..., description="Namespace of the workflow"),
         name: str = Path(..., description="Name of the workflow"),
-        skip_content: str = Query(False, description="If set, does not download artifacts, but insert empty files for debugging purposes")
+        skip_content: bool = Query(False, description="If set, does not download artifacts, but insert empty files for debugging purposes")
     ):
     """
     Notify the connector about a finished argo workflow. This will cause the workflow to be ingested.
     Starts a background task for the ingestion and returns early.
     """
-
     # Sanity check. Is this a valid workflow
     try:
         logger.info(f"Retrieving Workflow information for {namespace}/{name}")
