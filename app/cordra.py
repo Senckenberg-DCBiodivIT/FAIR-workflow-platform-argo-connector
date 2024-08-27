@@ -237,6 +237,10 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                 obj["isPartOf"] = [dataset["@id"]]
             cordra.CordraObject.update(obj_id=cordra_id, obj_json=obj, **upload_kwargs)
 
+        # touch root dataset, so it's newer than child datasets and files
+        logger.debug("Touching root dataset")
+        cordra.CordraObject.update(obj_id=dataset["@id"], obj_json=dataset, **upload_kwargs)
+
         logger.info(f"Dataset ingested. Cordra ID: {dataset['@id']} ({host}/#objects/{dataset['@id']})")
         return dataset["@id"]
     except Exception as e:
