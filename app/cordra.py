@@ -75,7 +75,7 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                     logger.debug(f"Download done ({file_size / 1024 / 1024:.2f} MB)")
 
                     # Cordra has issues with huge files
-                    if file_size > file_max_size:
+                    if file_max_size > 0 and file_size > file_max_size:
                         logger.warning(f"File size is {file_size / 1024 / 1024:.2f} MB, which is too large to upload. Skipping...")
                         continue
 
