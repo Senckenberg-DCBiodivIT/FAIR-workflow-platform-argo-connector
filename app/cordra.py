@@ -1,12 +1,16 @@
+import requests
+from requests_toolbelt import MultipartEncoder
+import json
 import logging
 from datetime import datetime
 import os
 from pathlib import Path
 import tempfile
+from urllib.parse import urljoin
+
 import magic
 import cordra
 from typing import Any, Generator
-import json_merge_patch
 import yaml
 
 logger = logging.getLogger("uvicorn.error")
@@ -92,17 +96,21 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
 
                 # write object
                 logger.debug("Sending file to cordra")
-                file_obj = cordra.CordraObject.create(
-                    obj_type="FileObject",
-                    obj_json={
-                        "name": os.path.basename(relative_path),
-                        "contentSize": Path(tmp_file.name).stat().st_size,
-                        "encodingFormat": encoding_format,
-                        "contentUrl": relative_path,
-                    },
-                    payloads={relative_path: (relative_path, open(tmp_file.name, "rb"))},
-                    **upload_kwargs
-                )
+                obj_json={
+                    "name": os.path.basename(relative_path),
+                    "contentSize": Path(tmp_file.name).stat().st_size,
+                    "encodingFormat": encoding_format,
+                    "contentUrl": relative_path,
+                }
+                # Cordra library does not stream files, and therefore goes OOM for large payloads.
+                # This request should take care of it
+                multipart = MultipartEncoder(fields={
+                    "content": json.dumps(obj_json),
+                    "file": (relative_path, open(tmp_file.name, "rb"), encoding_format)
+                })
+                response = requests.post(urljoin(host, "objects/") + "?type=FileObject", data=multipart, headers={"Content-Type": multipart.content_type}, verify=False, auth=(user, password))
+                response.raise_for_status()
+                file_obj = response.json()
                 logger.debug("File ingested")
             created_ids[file_obj["@id"]] = "FileObject"
             created_files[file_obj["@id"]] = file_obj["contentUrl"]
