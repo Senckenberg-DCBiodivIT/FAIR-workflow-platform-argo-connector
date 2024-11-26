@@ -147,7 +147,7 @@ def verify(host: str, token: str, workflow: dict[str: Any], namespace: str, veri
     client = _build_argo_client(host, token, verify_cert=verify_cert)
     api = workflow_service_api.WorkflowServiceApi(client)
 
-    wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration(), _check_type=False)
+    wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow.get("metadata", {}), spec=workflow.get("spec", {}), kind=workflow.get("kind", "Workflow"), _configuration=argo_workflows.configuration.Configuration(), _check_type=False)
     model = workflow_service_api.IoArgoprojWorkflowV1alpha1WorkflowLintRequest(namespace=namespace, workflow=wfl)
     response = api.lint_workflow(namespace, model, _check_return_type=False).to_dict()
     return response
@@ -162,7 +162,7 @@ def submit(host: str, token: str, workflow: dict[str: Any], namespace: str, dry_
         del workflow["metadata"]["name"]
 
     # generate a random name if there is no name generator
-    if not "generatedName" in workflow["metadata"]:
+    if not "generatedName" in workflow.get("metadata", {}):
         workflow["metadata"]["name"] = str(uuid.uuid4())
 
     wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration(), _check_type=False)

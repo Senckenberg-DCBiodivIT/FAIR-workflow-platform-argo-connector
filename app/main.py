@@ -176,7 +176,7 @@ async def check_workflow(
     content = await file.read()
     content = yaml.load(content, Loader=yaml.CLoader)
     try:
-        checked_workflow = argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=content["metadata"].get("namespace", settings.argo_default_namespace), verify_cert=False)
+        checked_workflow = argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=content.get("metadata", {}).get("namespace", settings.argo_default_namespace), verify_cert=False)
         workflow_parameters = [{"name": param["name"], "value": param["value"]} for param in checked_workflow.get("spec", {}).get("arguments", {}).get("parameters", [])]
         return {
             "workflow": checked_workflow,
