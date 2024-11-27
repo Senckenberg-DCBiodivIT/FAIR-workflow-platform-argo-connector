@@ -111,10 +111,17 @@ def _recursive_artifact_reader(url: str, argo_token: str, path: str, verify_cert
         is_download = "Content-Disposition" in response.headers
 
     if is_download:
-        print(f"Yielding file from {url}")
+        # The file path from the API is not always the same as the file name of the download.
+        # This is due to how Argo archives files. If the workflow stored the file in a compressed archive,
+        # the API will return the path to the file while download will return the file in an archive format.
+        # I.e. /tmp/my_file.txt might be returned as /tmp/my_file.zip.
+        # In this case, we will rewrite the path to match the actual file downloaded from argo (the zip).
+        file_name = response.headers.get("Content-Disposition").split("filename=")[1][1:-1]
+        rewritten_path = os.path.join(os.path.dirname(path), file_name)
+        print(f"Yielding file from {url} as {rewritten_path}")
         download_req = requests.get(url, verify=verify_cert, headers=headers, stream=True)
         download_req.raise_for_status()
-        yield path, download_req.iter_content(chunk_size=chunk_size)
+        yield rewritten_path, download_req.iter_content(chunk_size=chunk_size)
     else:
         print("Downloading directory recursively: " + url)
         content = requests.get(url, verify=verify_cert, headers=headers).content
