@@ -151,6 +151,7 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
         for parameter in parameters:
             parameter_json = {
                 "name": parameter["name"],
+                "additionalType": "Text"  # All argo workflow input parameters are text parameters.
             }
             if "description" in parameter:
                 parameter_json["description"] = parameter["description"]
