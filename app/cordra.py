@@ -170,6 +170,19 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                 )
                 created_ids[property_obj["@id"]] = "PropertyValue"
 
+        logger.debug("Create ComputerLanguage")
+        computer_language_obj = cordra.CordraObject.create(
+            obj_type="ComputerLanguage",
+            obj_json={
+                "name": "Argo",
+                "description": "Argo workflow language",
+                "identifier": "https://argoproj.github.io/workflows",
+                "url": "https://argoproj.github.io",
+            },
+            **upload_kwargs
+        )
+        created_ids[computer_language_obj["@id"]] = "ComputerLanguage"
+
         logger.debug("Create workflow")
         with tempfile.NamedTemporaryFile(delete=True,
                                          prefix=f"argo-workflow-tmp-") as tmp_file:
@@ -183,7 +196,7 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
                     "encodingFormat": "text/yaml",
                     "contentUrl": "workflow.yaml",
                     "description": "Argo workflow definition",
-                    "programmingLanguage": "https://argoproj.github.io/workflows",
+                    "programmingLanguage": computer_language_obj["@id"],
                     "input": [id for id, object_type in created_ids.items() if object_type == "FormalParameter"],
                 },
                 payloads={"workflow.yaml": ("workflow.yaml", open(tmp_file.name, "rb"))},
