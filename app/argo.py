@@ -169,7 +169,7 @@ def submit(host: str, token: str, workflow: dict[str: Any], namespace: str, dry_
         del workflow["metadata"]["name"]
 
     # generate a random name if there is no name generator
-    if not "generatedName" in workflow.get("metadata", {}):
+    if not "generateName" in workflow.get("metadata", {}):
         workflow["metadata"]["name"] = str(uuid.uuid4())
 
     wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration(), _check_type=False)

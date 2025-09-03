@@ -70,7 +70,8 @@ def process_workflow(name: str, namespace: str, skip_content: bool):
         artifact_stream_iterator=artifact_stream_iterator,
         reconstructed_wfl=reconstructed_wfl,
         file_max_size=settings.cordra_max_file_size,
-        skip_content=skip_content
+        skip_content=skip_content, 
+        suffix = name
     )
     logger.info(f"Successfully ingested {namespace}/{name}")
 
@@ -271,12 +272,13 @@ async def submit(
         logger.info("Linting workflow...")
         checked_workflow = argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=content["metadata"].get("namespace", settings.argo_default_namespace), verify_cert=False)
         logger.info(f"Submitting workflow (dryRun:{dryRun})")
-        argo.submit(settings.argo_base_url, settings.argo_token, deepcopy(checked_workflow), namespace=checked_workflow["metadata"].get("namespace", settings.argo_default_namespace), dry_run=dryRun, verify_cert=False)
-
+        wfl_metadata = argo.submit(settings.argo_base_url, settings.argo_token, deepcopy(checked_workflow), namespace=checked_workflow["metadata"].get("namespace", settings.argo_default_namespace), dry_run=dryRun, verify_cert=False)
+        workflow_id = wfl_metadata['metadata']['name']
         workflow_parameters = [{"name": param["name"], "value": param["value"]} for param in checked_workflow.get("spec", {}).get("arguments", {}).get("parameters", [])]
         return {
             "workflow": checked_workflow,
-            "parameters": workflow_parameters
+            "parameters": workflow_parameters,
+            "workflow_id": workflow_id
         }
     except argo_workflows.exceptions.ApiException as e:
         raise HTTPException(status_code=400, detail=json.loads(e.body))
