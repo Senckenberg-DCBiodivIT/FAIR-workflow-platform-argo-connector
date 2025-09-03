@@ -174,7 +174,7 @@ def submit(host: str, token: str, workflow: dict[str: Any], namespace: str, dry_
 
     wfl = workflow_service_api.IoArgoprojWorkflowV1alpha1Workflow(metadata=workflow["metadata"], spec=workflow["spec"], kind="Workflow", _configuration=argo_workflows.configuration.Configuration(), _check_type=False)
     model = workflow_service_api.IoArgoprojWorkflowV1alpha1WorkflowCreateRequest(namespace=namespace, workflow=wfl, kind="Workflow", server_dry_run=dry_run)
-    return api.create_workflow(namespace, model, _check_return_type=False).to_dict
+    return api.create_workflow(namespace, model, _check_return_type=False).to_dict()
 
 def list_workflows(host: str, token: str, verify_cert: bool = True) -> List[dict[str: Any]]:
     """ Lists workflows from Argo """
