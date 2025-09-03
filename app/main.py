@@ -146,6 +146,41 @@ def notify(
     })
 
 
+@app.get("/workflow/detail/{name}", dependencies=[Depends(check_auth)], response_model=WorkflowListResponseModel)
+def workflow_detail(        
+    namespace: str = Query('argo', description="Namespace of the workflow"),
+    name: str = Path(..., description="Name of the workflow"),):
+    """
+    Show workflow details
+    
+    """
+    try:
+        logger.info(f"Retrieving Workflow information for {namespace}/{name}")
+        wfl = argo.get_workflow_information(
+            host=settings.argo_base_url,
+            token=settings.argo_token,
+            namespace=namespace,
+            workflow_name=name,
+            verify_cert=False
+        )
+    except argo_workflows.exceptions.NotFoundException:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    
+    print(wfl)
+    annotations = wfl["metadata"]["annotations"]
+    item = {
+        "workflow_name": wfl["metadata"]["name"],
+        "uid": wfl["metadata"]["uid"],
+        "name": annotations.get("workflows.argoproj.io/title", None),
+        "status": wfl["status"]["phase"],
+        "createdAt": wfl["metadata"]["creationTimestamp"],
+        "startedAt": wfl["status"]["startedAt"],
+        "finishedAt": wfl["status"]["finishedAt"],
+        "submitterName": annotations.get("argo-connector/submitterName1", None),
+        "submitterOrcid": annotations.get("argo-connector/submitterId1", None),
+    }
+    return item
+
 @app.get("/workflow/list", dependencies=[Depends(check_auth)], response_model=List[WorkflowListResponseModel])
 def list():
     """
