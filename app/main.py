@@ -11,6 +11,8 @@ from app import cordra, argo
 from fastapi.responses import JSONResponse
 import logging
 from typing import Annotated, List
+from time import time
+import hashlib
 
 from app.models import HealthModel, NotificationResponseModel, WorkflowResponseModel, WorkflowListResponseModel
 
@@ -48,6 +50,7 @@ def check_auth(credentials: Annotated[HTTPBasicCredentials, Depends(security)]):
 
 def process_workflow(name: str, namespace: str, skip_content: bool):
     logger.info(f"Ingesting {namespace}/{name}")
+    start = time()
     wfl = argo.get_workflow_information(settings.argo_base_url, settings.argo_token, namespace, name, verify_cert=False)
     artifacts = argo.parse_artifact_list(wfl)
 
@@ -73,7 +76,15 @@ def process_workflow(name: str, namespace: str, skip_content: bool):
         skip_content=skip_content, 
         suffix = name
     )
-    logger.info(f"Successfully ingested {namespace}/{name}")
+    stop = time()
+    logger.info(f"Successfully ingested {namespace}/{name} in {stop-start:.1f} seconds.")
+
+def generate_workflow_signature(wfl:dict)->str:
+    normalized_workflow = json.dumps(wfl, sort_keys = True)
+    m = hashlib.sha256()
+    m.update(normalized_workflow.encode("utf-8"))
+    workflow_signature = m.hexdigest()[:32] # truncate hash
+    return workflow_signature
 
 @app.get("/", response_model=HealthModel)
 def healthcheck():
@@ -167,7 +178,6 @@ def workflow_detail(
     except argo_workflows.exceptions.NotFoundException:
         raise HTTPException(status_code=404, detail="Workflow not found")
     
-    print(wfl)
     annotations = wfl["metadata"]["annotations"]
     item = {
         "workflow_name": wfl["metadata"]["name"],
@@ -258,6 +268,7 @@ async def submit(
         content["metadata"]["annotations"]["workflows.argoproj.io/title"] = title
     if description is not None:
         content["metadata"]["annotations"]["workflows.argoproj.io/description"] = description
+    namespace = content["metadata"].get("namespace", settings.argo_default_namespace)
 
     # Override workflow parameters
     if overrideParameters:
@@ -270,11 +281,31 @@ async def submit(
 
     try:
         logger.info("Linting workflow...")
-        checked_workflow = argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=content["metadata"].get("namespace", settings.argo_default_namespace), verify_cert=False)
+        checked_workflow = argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=namespace, verify_cert=False)
+    except argo_workflows.exceptions.ApiException as e:
+        raise HTTPException(status_code=400, detail=json.loads(e.body))    
+          
+    workflow_signature = generate_workflow_signature(checked_workflow)
+
+    checked_workflow["metadata"]["labels"]["workflows.argoproj.io/signature"] = workflow_signature    
+    workflow_parameters = [{"name": param["name"], "value": param["value"]} for param in checked_workflow.get("spec", {}).get("arguments", {}).get("parameters", [])]
+
+    workflow_found, workflow_id = argo.get_workflow_by_signature(workflow_signature, settings.argo_base_url, namespace, settings.argo_token)
+
+    # don't resubmit workflow, if it already ran successfully
+    # instead return the workflow_id of the existing workflow
+    if workflow_found:
+        logger.info('Workflow already exists')
+        return {
+            "workflow": checked_workflow,
+            "parameters": workflow_parameters,
+            "workflow_id": workflow_id
+        }
+    
+    try:
         logger.info(f"Submitting workflow (dryRun:{dryRun})")
-        wfl_metadata = argo.submit(settings.argo_base_url, settings.argo_token, deepcopy(checked_workflow), namespace=checked_workflow["metadata"].get("namespace", settings.argo_default_namespace), dry_run=dryRun, verify_cert=False)
+        wfl_metadata = argo.submit(settings.argo_base_url, settings.argo_token, deepcopy(checked_workflow), namespace=namespace, dry_run=dryRun, verify_cert=False)
         workflow_id = wfl_metadata['metadata']['name']
-        workflow_parameters = [{"name": param["name"], "value": param["value"]} for param in checked_workflow.get("spec", {}).get("arguments", {}).get("parameters", [])]
         return {
             "workflow": checked_workflow,
             "parameters": workflow_parameters,

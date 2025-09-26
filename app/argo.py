@@ -1,5 +1,3 @@
-import json
-import sys
 import uuid
 from typing import Any, List
 
@@ -9,6 +7,8 @@ import requests
 from bs4 import BeautifulSoup
 import os
 import urllib.parse
+from fastapi import HTTPException
+from datetime import datetime
 
 
 def _build_argo_client(url: str, token: str, verify_cert: bool = True):
@@ -181,3 +181,34 @@ def list_workflows(host: str, token: str, verify_cert: bool = True) -> List[dict
     client = _build_argo_client(host, token, verify_cert=verify_cert)
     api = workflow_service_api.WorkflowServiceApi(client)
     return api.list_workflows(namespace="argo", _check_return_type=False).to_dict()
+
+def get_workflow_by_signature(workflow_signature: str, url: str, namespace: str, token: str) -> tuple[bool, None | str]:
+    """
+    Checks if successfull workflow with same signature already exists.
+    """
+    params = {
+        'listOptions.labelSelector':f'workflows.argoproj.io/signature={workflow_signature}',
+        #'listOptions.labelSelector': 'workflows.argoproj.io/phase=Succeeded'
+        }
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    r = requests.get(url =f'{url}/api/v1/workflows/{namespace}',params = params, headers = headers)
+    if r.status_code != 200:
+        raise HTTPException(status_code=r.status_code, detail = r.text)
+    
+    items = r.json()['items']
+    if items is None:
+        return False, None
+    
+    items = [item  for item in items if (item['metadata']['labels']['workflows.argoproj.io/phase'] == 'Succeeded')]
+    if len(items) == 0:
+        return False, None
+    
+    most_recent_item = max(
+        items,
+        key=lambda item: datetime.strptime(item["metadata"]["creationTimestamp"], "%Y-%m-%dT%H:%M:%SZ")
+    )
+    workflow_id = most_recent_item['metadata']['name']
+
+    return True, workflow_id
