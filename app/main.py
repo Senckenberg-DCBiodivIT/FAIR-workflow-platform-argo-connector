@@ -5,15 +5,16 @@ import argo_workflows.exceptions
 import yaml
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, UploadFile, Path, File, Form, Query
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.responses import JSONResponse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AnyUrl
-from app import cordra, argo
-from fastapi.responses import JSONResponse
+import requests
 import logging
 from typing import Annotated, List
 from time import time
 import hashlib
 
+from app import cordra, argo
 from app.models import HealthModel, NotificationResponseModel, WorkflowResponseModel, WorkflowListResponseModel
 
 
@@ -78,6 +79,11 @@ def process_workflow(name: str, namespace: str, skip_content: bool):
     )
     stop = time()
     logger.info(f"Successfully ingested {namespace}/{name} in {stop-start:.1f} seconds.")
+    try:
+        webhookURL = wfl["metadata"]["annotations"]["argo-connector/webhookURL"]
+        trigger_webhook(webhookURL, name, status = 'Succeeded')
+    except KeyError:
+        pass
 
 def generate_workflow_signature(wfl:dict)->str:
     normalized_workflow = json.dumps(wfl, sort_keys = True)
@@ -85,6 +91,14 @@ def generate_workflow_signature(wfl:dict)->str:
     m.update(normalized_workflow.encode("utf-8"))
     workflow_signature = m.hexdigest()[:32] # truncate hash
     return workflow_signature
+
+def trigger_webhook(webhookURL:str, workflow_id:str, status:str):
+    data = {'workflow_id': workflow_id,
+                'status': status}
+    response = requests.post(webhookURL, data = data)
+    if response.status_code != 200:
+        logger.warning(f'Webhook trigger failed with status {response.status_code}: {response.content}')
+    logger.info('Webhook triggered')
 
 @app.get("/", response_model=HealthModel)
 def healthcheck():
@@ -246,6 +260,7 @@ async def submit(
         description: str = Form(None, description="Description of the workflow"),
         keywords: str = Form(None, description="Keywords of the workflow", examples=["keyword1,keyword2,keyword3"]),
         dryRun: bool = Form(False, description="Whether to perform a dry run of the workflow or actually submit it"),
+        webhookURL: str = Form(None, description="If provided, webhook will be triggered once the workflow is complete.")
     ):
     """
      Submit a new workflow to the workflow engine. This verifies that the workflow is a valid workflow and then submits it for processing.
@@ -268,6 +283,8 @@ async def submit(
         content["metadata"]["annotations"]["workflows.argoproj.io/title"] = title
     if description is not None:
         content["metadata"]["annotations"]["workflows.argoproj.io/description"] = description
+    if webhookURL is not None:
+        content["metadata"]["annotations"]["argo-connector/webhookURL"] = str(webhookURL)
     namespace = content["metadata"].get("namespace", settings.argo_default_namespace)
 
     # Override workflow parameters
@@ -296,6 +313,8 @@ async def submit(
     # instead return the workflow_id of the existing workflow
     if workflow_found:
         logger.info('Workflow already exists')
+        if webhookURL is not None:
+            trigger_webhook(webhookURL, workflow_id, status = "Succeeded")
         return {
             "workflow": checked_workflow,
             "parameters": workflow_parameters,
