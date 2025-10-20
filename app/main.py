@@ -75,7 +75,7 @@ def process_workflow(name: str, namespace: str, skip_content: bool):
         reconstructed_wfl=reconstructed_wfl,
         file_max_size=settings.cordra_max_file_size,
         skip_content=skip_content, 
-        suffix = name
+        suffix=name
     )
     stop = time()
     logger.info(f"Successfully ingested {namespace}/{name} in {stop-start:.1f} seconds.")
@@ -85,17 +85,17 @@ def process_workflow(name: str, namespace: str, skip_content: bool):
     except KeyError:
         pass
 
-def generate_workflow_signature(wfl:dict)->str:
-    normalized_workflow = json.dumps(wfl, sort_keys = True)
+def generate_workflow_signature(wfl: dict) -> str:
+    normalized_workflow = json.dumps(wfl, sort_keys=True)
     m = hashlib.sha256()
     m.update(normalized_workflow.encode("utf-8"))
     workflow_signature = m.hexdigest()[:32] # truncate hash
     return workflow_signature
 
-def trigger_webhook(webhookURL:str, workflow_id:str, status:str):
+def trigger_webhook(webhookURL: str, workflow_id: str, status: str):
     data = {'workflow_id': workflow_id,
                 'status': status}
-    response = requests.post(webhookURL, data = data)
+    response = requests.post(webhookURL, data=data)
     if response.status_code != 200:
         logger.warning(f'Webhook trigger failed with status {response.status_code}: {response.content}')
     logger.info('Webhook triggered')
@@ -314,7 +314,7 @@ async def submit(
     if workflow_found:
         logger.info('Workflow already exists')
         if webhookURL is not None:
-            trigger_webhook(webhookURL, workflow_id, status = "Succeeded")
+            trigger_webhook(webhookURL, workflow_id, status="Succeeded")
         return {
             "workflow": checked_workflow,
             "parameters": workflow_parameters,

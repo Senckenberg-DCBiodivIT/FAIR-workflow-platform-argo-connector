@@ -251,7 +251,7 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
         }
 
         logger.debug("Create Dataset")
-        dataset = cordra.CordraObject.create(obj_type="Dataset", obj_json=properties, suffix = suffix, **upload_kwargs)
+        dataset = cordra.CordraObject.create(obj_type="Dataset", obj_json=properties, suffix=suffix, **upload_kwargs)
         created_ids[dataset["@id"]] = "Dataset"
 
         # Update files parfOf/resultOf to point to dataset/action

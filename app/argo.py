@@ -184,7 +184,7 @@ def list_workflows(host: str, token: str, verify_cert: bool = True) -> List[dict
 
 def get_workflow_by_signature(workflow_signature: str, url: str, namespace: str, token: str) -> tuple[bool, None | str]:
     """
-    Checks if successfull workflow with same signature already exists.
+    Checks if successful workflow with same signature already exists.
     """
     params = {
         'listOptions.labelSelector':f'workflows.argoproj.io/signature={workflow_signature}',
@@ -193,9 +193,9 @@ def get_workflow_by_signature(workflow_signature: str, url: str, namespace: str,
     
     headers = {"Authorization": f"Bearer {token}"}
     
-    r = requests.get(url =f'{url}/api/v1/workflows/{namespace}',params = params, headers = headers)
+    r = requests.get(url=f'{url}/api/v1/workflows/{namespace}',params=params, headers=headers)
     if r.status_code != 200:
-        raise HTTPException(status_code=r.status_code, detail = r.text)
+        raise HTTPException(status_code=r.status_code, detail=r.text)
     
     items = r.json()['items']
     if items is None:
