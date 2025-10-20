@@ -25,7 +25,10 @@ def check_health(host: str, user: str, password: str) -> bool|str:
 
     return True
 
-def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, wfl: dict[str: Any], artifact_stream_iterator: Generator, reconstructed_wfl: dict[str: Any], skip_content: bool = False, file_max_size: int = 100*1024*1024) -> str:
+def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, wfl: dict[str: Any], 
+                                           artifact_stream_iterator: Generator, reconstructed_wfl: dict[str: Any], 
+                                           skip_content: bool = False, file_max_size: int = 100*1024*1024, suffix:str = None
+                                           ) -> str:
     upload_kwargs = {
         "host": host,
         "username": user,
@@ -248,7 +251,7 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
         }
 
         logger.debug("Create Dataset")
-        dataset = cordra.CordraObject.create(obj_type="Dataset", obj_json=properties, **upload_kwargs)
+        dataset = cordra.CordraObject.create(obj_type="Dataset", obj_json=properties, suffix=suffix, **upload_kwargs)
         created_ids[dataset["@id"]] = "Dataset"
 
         # Update files parfOf/resultOf to point to dataset/action

@@ -5,13 +5,16 @@ import argo_workflows.exceptions
 import yaml
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, UploadFile, Path, File, Form, Query
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.responses import JSONResponse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AnyUrl
-from app import cordra, argo
-from fastapi.responses import JSONResponse
+import requests
 import logging
 from typing import Annotated, List
+from time import time
+import hashlib
 
+from app import cordra, argo
 from app.models import HealthModel, NotificationResponseModel, WorkflowResponseModel, WorkflowListResponseModel
 
 
@@ -48,6 +51,7 @@ def check_auth(credentials: Annotated[HTTPBasicCredentials, Depends(security)]):
 
 def process_workflow(name: str, namespace: str, skip_content: bool):
     logger.info(f"Ingesting {namespace}/{name}")
+    start = time()
     wfl = argo.get_workflow_information(settings.argo_base_url, settings.argo_token, namespace, name, verify_cert=False)
     artifacts = argo.parse_artifact_list(wfl)
 
@@ -70,9 +74,31 @@ def process_workflow(name: str, namespace: str, skip_content: bool):
         artifact_stream_iterator=artifact_stream_iterator,
         reconstructed_wfl=reconstructed_wfl,
         file_max_size=settings.cordra_max_file_size,
-        skip_content=skip_content
+        skip_content=skip_content, 
+        suffix=name
     )
-    logger.info(f"Successfully ingested {namespace}/{name}")
+    stop = time()
+    logger.info(f"Successfully ingested {namespace}/{name} in {stop-start:.1f} seconds.")
+    try:
+        webhookURL = wfl["metadata"]["annotations"]["argo-connector/webhookURL"]
+        trigger_webhook(webhookURL, name, status = 'Succeeded')
+    except KeyError:
+        pass
+
+def generate_workflow_signature(wfl: dict) -> str:
+    normalized_workflow = json.dumps(wfl, sort_keys=True)
+    m = hashlib.sha256()
+    m.update(normalized_workflow.encode("utf-8"))
+    workflow_signature = m.hexdigest()[:32] # truncate hash
+    return workflow_signature
+
+def trigger_webhook(webhookURL: str, workflow_id: str, status: str):
+    data = {'workflow_id': workflow_id,
+                'status': status}
+    response = requests.post(webhookURL, data=data)
+    if response.status_code != 200:
+        logger.warning(f'Webhook trigger failed with status {response.status_code}: {response.content}')
+    logger.info('Webhook triggered')
 
 @app.get("/", response_model=HealthModel)
 def healthcheck():
@@ -146,6 +172,40 @@ def notify(
     })
 
 
+@app.get("/workflow/detail/{name}", dependencies=[Depends(check_auth)], response_model=WorkflowListResponseModel)
+def workflow_detail(        
+    namespace: str = Query('argo', description="Namespace of the workflow"),
+    name: str = Path(..., description="Name of the workflow"),):
+    """
+    Show workflow details
+    
+    """
+    try:
+        logger.info(f"Retrieving Workflow information for {namespace}/{name}")
+        wfl = argo.get_workflow_information(
+            host=settings.argo_base_url,
+            token=settings.argo_token,
+            namespace=namespace,
+            workflow_name=name,
+            verify_cert=False
+        )
+    except argo_workflows.exceptions.NotFoundException:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    
+    annotations = wfl["metadata"]["annotations"]
+    item = {
+        "workflow_name": wfl["metadata"]["name"],
+        "uid": wfl["metadata"]["uid"],
+        "name": annotations.get("workflows.argoproj.io/title", None),
+        "status": wfl["status"]["phase"],
+        "createdAt": wfl["metadata"]["creationTimestamp"],
+        "startedAt": wfl["status"]["startedAt"],
+        "finishedAt": wfl["status"]["finishedAt"],
+        "submitterName": annotations.get("argo-connector/submitterName1", None),
+        "submitterOrcid": annotations.get("argo-connector/submitterId1", None),
+    }
+    return item
+
 @app.get("/workflow/list", dependencies=[Depends(check_auth)], response_model=List[WorkflowListResponseModel])
 def list():
     """
@@ -200,6 +260,7 @@ async def submit(
         description: str = Form(None, description="Description of the workflow"),
         keywords: str = Form(None, description="Keywords of the workflow", examples=["keyword1,keyword2,keyword3"]),
         dryRun: bool = Form(False, description="Whether to perform a dry run of the workflow or actually submit it"),
+        webhookURL: str = Form(None, description="If provided, webhook will be triggered once the workflow is complete.")
     ):
     """
      Submit a new workflow to the workflow engine. This verifies that the workflow is a valid workflow and then submits it for processing.
@@ -222,6 +283,9 @@ async def submit(
         content["metadata"]["annotations"]["workflows.argoproj.io/title"] = title
     if description is not None:
         content["metadata"]["annotations"]["workflows.argoproj.io/description"] = description
+    if webhookURL is not None:
+        content["metadata"]["annotations"]["argo-connector/webhookURL"] = str(webhookURL)
+    namespace = content["metadata"].get("namespace", settings.argo_default_namespace)
 
     # Override workflow parameters
     if overrideParameters:
@@ -234,14 +298,37 @@ async def submit(
 
     try:
         logger.info("Linting workflow...")
-        checked_workflow = argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=content["metadata"].get("namespace", settings.argo_default_namespace), verify_cert=False)
-        logger.info(f"Submitting workflow (dryRun:{dryRun})")
-        argo.submit(settings.argo_base_url, settings.argo_token, deepcopy(checked_workflow), namespace=checked_workflow["metadata"].get("namespace", settings.argo_default_namespace), dry_run=dryRun, verify_cert=False)
+        checked_workflow = argo.verify(settings.argo_base_url, settings.argo_token, content, namespace=namespace, verify_cert=False)
+    except argo_workflows.exceptions.ApiException as e:
+        raise HTTPException(status_code=400, detail=json.loads(e.body))    
+          
+    workflow_signature = generate_workflow_signature(checked_workflow)
 
-        workflow_parameters = [{"name": param["name"], "value": param["value"]} for param in checked_workflow.get("spec", {}).get("arguments", {}).get("parameters", [])]
+    checked_workflow["metadata"]["labels"]["workflows.argoproj.io/signature"] = workflow_signature    
+    workflow_parameters = [{"name": param["name"], "value": param["value"]} for param in checked_workflow.get("spec", {}).get("arguments", {}).get("parameters", [])]
+
+    workflow_found, workflow_id = argo.get_workflow_by_signature(workflow_signature, settings.argo_base_url, namespace, settings.argo_token)
+
+    # don't resubmit workflow, if it already ran successfully
+    # instead return the workflow_id of the existing workflow
+    if workflow_found:
+        logger.info('Workflow already exists')
+        if webhookURL is not None:
+            trigger_webhook(webhookURL, workflow_id, status="Succeeded")
         return {
             "workflow": checked_workflow,
-            "parameters": workflow_parameters
+            "parameters": workflow_parameters,
+            "workflow_id": workflow_id
+        }
+    
+    try:
+        logger.info(f"Submitting workflow (dryRun:{dryRun})")
+        wfl_metadata = argo.submit(settings.argo_base_url, settings.argo_token, deepcopy(checked_workflow), namespace=namespace, dry_run=dryRun, verify_cert=False)
+        workflow_id = wfl_metadata['metadata']['name']
+        return {
+            "workflow": checked_workflow,
+            "parameters": workflow_parameters,
+            "workflow_id": workflow_id
         }
     except argo_workflows.exceptions.ApiException as e:
         raise HTTPException(status_code=400, detail=json.loads(e.body))
