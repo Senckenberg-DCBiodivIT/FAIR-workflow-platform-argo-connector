@@ -242,7 +242,7 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
         properties = {
             "name": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/title", wfl["metadata"]["name"]),
             "description": wfl["metadata"].get("annotations", {}).get("workflows.argoproj.io/description", None),
-            "author": [id for id in created_ids if created_ids[id] == "Person"],
+            "author": [id for id in created_ids if created_ids[id] in ["Person", "Organization"]],
             "hasPart": [id for id in created_ids if created_ids[id] in ["FileObject", "Workflow", "Dataset"]],
             "mentions": [action["@id"]],
             "mainEntity": wfl_obj["@id"],
