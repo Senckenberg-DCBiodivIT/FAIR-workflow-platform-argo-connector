@@ -202,7 +202,7 @@ def workflow_detail(
         "startedAt": wfl["status"]["startedAt"],
         "finishedAt": wfl["status"]["finishedAt"],
         "submitterName": annotations.get("argo-connector/submitterName1", None),
-        "submitterOrcid": annotations.get("argo-connector/submitterId1", None),
+        "submitterId": annotations.get("argo-connector/submitterId1", None),
     }
     return item
 
@@ -223,7 +223,7 @@ def list():
             "startedAt": item["status"]["startedAt"],
             "finishedAt": item["status"]["finishedAt"],
             "submitterName": annotations.get("argo-connector/submitterName1", None),
-            "submitterOrcid": annotations.get("argo-connector/submitterId1", None),
+            "submitterId": annotations.get("argo-connector/submitterId1", None),
         })
     return items
 
@@ -253,7 +253,7 @@ async def check_workflow(
 async def submit(
         file: UploadFile = File(..., description="Workflow file. Must be a valid Argo workflow in yaml format", media_type="text/yaml"),
         submitterName: str = Form(..., description="Name of the user submitting the workflow"),
-        submitterOrcid: str = Form(..., description="Orcid of the user submitting the workflow", examples=["0000-1234-4567-8910"], regex=r"[0-9A-Z]{4}\-[0-9A-Z]{4}\-[0-9A-Z]{4}\-[0-9A-Z]{4}"),
+        submitterId: str = Form(..., description="Id of the user submitting the workflow, should be ORCID, ROR or doi url", examples=["https://orcid.org/0000-1234-4567-8910"]),
         license: AnyUrl = Form(None, description="License of the workflow output"),
         overrideParameters: str = Form(None, description="Override workflow parameters. Accepts a comma separated list of name:value pairs", examples=["param1=value1,param2=value2"]),
         title: str = Form(None, description="Title of the workflow"),
@@ -273,7 +273,7 @@ async def submit(
     logger.info("Patch workflow with submitter data")
     if not "metadata" in content: content["metadata"] = {}
     if not "annotations" in content["metadata"]: content["metadata"]["annotations"] = {}
-    content["metadata"]["annotations"]["argo-connector/submitterId1"] = submitterOrcid
+    content["metadata"]["annotations"]["argo-connector/submitterId1"] = submitterId
     content["metadata"]["annotations"]["argo-connector/submitterName1"] = submitterName
     if license is not None:
         content["metadata"]["annotations"]["argo-connector/license"] = str(license)

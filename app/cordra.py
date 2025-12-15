@@ -42,18 +42,24 @@ def create_dataset_from_workflow_artifacts(host: str, user: str, password: str, 
     created_files = {}
     try:
         create_action_author = None
-        for key, value in workflow_annotations.items():
+        for key, _ in workflow_annotations.items():
             if key.startswith("argo-connector/submitterId"):
                 number = key.split("argo-connector/submitterId")[1]
 
-                author_id = "https://orcid.org/" + wfl["metadata"]["annotations"][f"argo-connector/submitterId{number}"]
+                author_id = wfl["metadata"]["annotations"][f"argo-connector/submitterId{number}"]
                 author_properties = {"identifier": author_id}
                 if f"argo-connector/submitterName{number}" in wfl["metadata"]["annotations"]:
                     author_properties["name"] = wfl["metadata"]["annotations"][f"argo-connector/submitterName{number}"]
-                author = cordra.CordraObject.create(obj_type="Person", obj_json=author_properties, **upload_kwargs)
-                if number == "1":
-                    create_action_author = author
-                created_ids[author["@id"]] = "Person"
+                if 'orcid' in author_id:
+                    author = cordra.CordraObject.create(obj_type="Person", obj_json=author_properties, **upload_kwargs)
+                    if number == "1":
+                        create_action_author = author
+                    created_ids[author["@id"]] = "Person"
+                elif 'ror' in author_id or 'doi' in author_id:
+                    author = cordra.CordraObject.create(obj_type="Organization", obj_json=author_properties, **upload_kwargs)
+                    if number == "1":
+                        create_action_author = author
+                    created_ids[author["@id"]] = "Organization"
 
         # upload files
         logger.debug("Creating file objects")

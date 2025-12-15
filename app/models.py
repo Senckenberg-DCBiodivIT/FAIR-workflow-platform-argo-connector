@@ -37,4 +37,4 @@ class WorkflowListResponseModel(BaseModel):
     startedAt: str = Field(..., description="Workflow started time")
     finishedAt: str|None = Field(..., description="Workflow finished time")
     submitterName: str|None = Field(None, description="Name of the user submitting the workflow")
-    submitterOrcid: str|None = Field(None, description="Orcid of the user submitting the workflow")
+    submitterId: str|None = Field(None, description="Id (ORCID, ROR or doi) of the user submitting the workflow")
