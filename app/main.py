@@ -260,7 +260,8 @@ async def submit(
         description: str = Form(None, description="Description of the workflow"),
         keywords: str = Form(None, description="Keywords of the workflow", examples=["keyword1,keyword2,keyword3"]),
         dryRun: bool = Form(False, description="Whether to perform a dry run of the workflow or actually submit it"),
-        webhookURL: str = Form(None, description="If provided, webhook will be triggered once the workflow is complete.")
+        webhookURL: str = Form(None, description="If provided, webhook will be triggered once the workflow is complete."),
+        force: bool = Form(True, description="Whether to force repeated execution if workflow signature already exists."),
     ):
     """
      Submit a new workflow to the workflow engine. This verifies that the workflow is a valid workflow and then submits it for processing.
@@ -307,19 +308,20 @@ async def submit(
     checked_workflow["metadata"]["labels"]["workflows.argoproj.io/signature"] = workflow_signature    
     workflow_parameters = [{"name": param["name"], "value": param["value"]} for param in checked_workflow.get("spec", {}).get("arguments", {}).get("parameters", [])]
 
-    workflow_found, workflow_id = argo.get_workflow_by_signature(workflow_signature, settings.argo_base_url, namespace, settings.argo_token)
+    if not force:
+        workflow_found, workflow_id = argo.get_workflow_by_signature(workflow_signature, settings.argo_base_url, namespace, settings.argo_token)
 
-    # don't resubmit workflow, if it already ran successfully
-    # instead return the workflow_id of the existing workflow
-    if workflow_found:
-        logger.info('Workflow already exists')
-        if webhookURL is not None:
-            trigger_webhook(webhookURL, workflow_id, status="Succeeded")
-        return {
-            "workflow": checked_workflow,
-            "parameters": workflow_parameters,
-            "workflow_id": workflow_id
-        }
+        # don't resubmit workflow, if it already ran successfully
+        # instead return the workflow_id of the existing workflow
+        if workflow_found:
+            logger.info('Workflow already exists')
+            if webhookURL is not None:
+                trigger_webhook(webhookURL, workflow_id, status="Succeeded")
+            return {
+                "workflow": checked_workflow,
+                "parameters": workflow_parameters,
+                "workflow_id": workflow_id
+            }
     
     try:
         logger.info(f"Submitting workflow (dryRun:{dryRun})")
