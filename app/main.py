@@ -197,9 +197,20 @@ def notify(
 
     if wfl["status"]["phase"] != "Succeeded":
         if len(unsucceeded_nodes) > 0:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Workflow did not succeed (unsuccessful nodes: {unsucceeded_nodes})",
+            try:
+                webhookURL = wfl["metadata"]["annotations"]["argo-connector/webhookURL"]
+                trigger_webhook(webhookURL, name, status="Failed")
+            except KeyError:
+                pass
+
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "status": "accepted",
+                    "workflow_status": wfl["status"]["phase"],
+                    "workflow_name": wfl["metadata"]["name"],
+                    "workflow_namespace": wfl["metadata"]["namespace"],
+                },
             )
         else:
             logger.info(
