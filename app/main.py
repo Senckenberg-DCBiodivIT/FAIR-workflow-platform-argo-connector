@@ -123,7 +123,7 @@ def generate_workflow_signature(wfl: dict) -> str:
 
 def trigger_webhook(webhookURL: str, workflow_id: str, status: str):
     data = {"workflow_id": workflow_id, "status": status}
-    response = requests.post(webhookURL, data=data)
+    response = requests.post(webhookURL.format(workflow_id = workflow_id), data=data)
     if response.status_code != 200:
         logger.warning(
             f"Webhook trigger failed with status {response.status_code}: {response.content}"
