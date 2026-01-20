@@ -383,8 +383,8 @@ def create_dataset_from_workflow_artifacts(
         )
         return dataset["@id"]
     except Exception as e:
-        print(
-            f"Failed to create corda dataset: {type(e)} {str(e)}. Cleaning up uploaded objects"
+        logger.exception(
+            f"Failed to create corda dataset: {type(e)} {str(e)}.\n Cleaning up uploaded objects"
         )
         for cordra_id in created_ids:
             cordra.CordraObject.delete(obj_id=cordra_id, **upload_kwargs)

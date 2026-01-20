@@ -1,5 +1,6 @@
 import uuid
 from typing import Any, List
+import logging
 
 import argo_workflows
 from argo_workflows.api import workflow_service_api
@@ -9,6 +10,8 @@ import os
 import urllib.parse
 from fastapi import HTTPException
 from datetime import datetime
+
+logger = logging.getLogger("uvicorn.error")
 
 
 def _build_argo_client(url: str, token: str, verify_cert: bool = True):
@@ -140,14 +143,14 @@ def _recursive_artifact_reader(
             1:-1
         ]
         rewritten_path = os.path.join(os.path.dirname(path), file_name)
-        print(f"Yielding file from {url} as {rewritten_path}")
+        logger.info(f"Yielding file from {url} as {rewritten_path}")
         download_req = requests.get(
             url, verify=verify_cert, headers=headers, stream=True
         )
         download_req.raise_for_status()
         yield rewritten_path, download_req.iter_content(chunk_size=chunk_size)
     else:
-        print("Downloading directory recursively: " + url)
+        logger.info("Downloading directory recursively: " + url)
         content = requests.get(url, verify=verify_cert, headers=headers).content
         soup = BeautifulSoup(content, features="html.parser")
         for link in soup.find_all("a"):
