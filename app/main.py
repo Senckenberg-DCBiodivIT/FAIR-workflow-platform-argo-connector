@@ -91,17 +91,25 @@ def process_workflow(name: str, namespace: str, skip_content: bool):
         artifact_list=artifacts,
         verify_cert=False,
     )
-    cordra.create_dataset_from_workflow_artifacts(
-        host=settings.cordra_base_url,
-        user=settings.cordra_user,
-        password=settings.cordra_password,
-        wfl=wfl,
-        artifact_stream_iterator=artifact_stream_iterator,
-        reconstructed_wfl=reconstructed_wfl,
-        file_max_size=settings.cordra_max_file_size,
-        skip_content=skip_content,
-        suffix=name,
-    )
+    try:
+        cordra.create_dataset_from_workflow_artifacts(
+            host=settings.cordra_base_url,
+            user=settings.cordra_user,
+            password=settings.cordra_password,
+            wfl=wfl,
+            artifact_stream_iterator=artifact_stream_iterator,
+            reconstructed_wfl=reconstructed_wfl,
+            file_max_size=settings.cordra_max_file_size,
+            skip_content=skip_content,
+            suffix=name,
+        )
+    except Exception:
+        try:
+            webhookURL = wfl["metadata"]["annotations"]["argo-connector/webhookURL"]
+            trigger_webhook(webhookURL, name, status="Failed")
+        except KeyError:
+            pass
+        return
     stop = time()
     logger.info(
         f"Successfully ingested {namespace}/{name} in {stop - start:.1f} seconds."
