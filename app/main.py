@@ -23,6 +23,7 @@ import logging
 from typing import Annotated, List
 from time import time
 import hashlib
+from urllib.parse import unquote_plus
 
 from app import cordra, argo
 from app.models import (
@@ -380,8 +381,8 @@ async def submit(
     license: AnyUrl = Form(None, description="License of the workflow output"),
     overrideParameters: str = Form(
         None,
-        description="Override workflow parameters. Accepts a comma separated list of name:value pairs",
-        examples=["param1=value1,param2=value2"],
+        description="Override workflow parameters. Accepts a comma separated list of name:value pairs. Values are urlencoded.",
+        examples=["param1:value1,param2:value2"],
     ),
     title: str = Form(None, description="Title of the workflow"),
     description: str = Form(None, description="Description of the workflow"),
@@ -442,7 +443,9 @@ async def submit(
         for key, value in [param.split(":", maxsplit=1) for param in parameter_list]:
             for i in range(len(content["spec"]["arguments"]["parameters"])):
                 if content["spec"]["arguments"]["parameters"][i]["name"] == key:
-                    content["spec"]["arguments"]["parameters"][i]["value"] = value
+                    content["spec"]["arguments"]["parameters"][i]["value"] = (
+                        unquote_plus(value)
+                    )
                     break
 
     try:
