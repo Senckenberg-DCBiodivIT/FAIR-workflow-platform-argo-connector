@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     cordra_user: str
     cordra_password: str
 
+    # Public URL reachable by Argo for exit-handler callback requests.
+    connector_notify_base_url: AnyUrl
+
     root_path: str | None = (
         None  # might be behind a proxy. This would be the prefix then.
     )
@@ -185,6 +188,10 @@ def ensure_connector_exit_handler(workflow: dict) -> None:
         spec["templates"] = templates
 
     exit_handler_template = deepcopy(EXIT_HANDLER_TEMPLATE)
+    notify_base_url = str(settings.connector_notify_base_url).rstrip("/")
+    exit_handler_template["steps"][0][0]["inline"]["http"]["url"] = (
+        f"{notify_base_url}/notify/{{{{ workflow.namespace }}}}/{{{{ workflow.name }}}}"
+    )
 
     replaced = False
     for i, template in enumerate(templates):
@@ -500,6 +507,7 @@ async def submit(
         content["metadata"] = {}
     if "annotations" not in content["metadata"]:
         content["metadata"]["annotations"] = {}
+    content["metadata"]["annotations"]["argo-connector/notify"] = "true"
     content["metadata"]["annotations"]["argo-connector/submitterId1"] = submitterId
     content["metadata"]["annotations"]["argo-connector/submitterName1"] = submitterName
     if license is not None:

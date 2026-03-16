@@ -23,6 +23,7 @@ Make sure to set the neccessary environment variables:
 |--|--|--|
 | ARGO_BASE_URL	| Base URL of the Argo workflow engine | |
 | ARGO_TOKEN | Authentication token for Argo | |
+| CONNECTOR_NOTIFY_BASE_URL | Public base URL of this connector, reachable from Argo (for exit-handler callback to `/notify/{namespace}/{name}`) | |
 | CORDRA_BASE_URL | Base URL of the Cordra instance | |
 | CORDRA_USER | Username for Cordra authentication | |
 | CORDRA_PASSWORD | Password for Cordra authentication | |

@@ -9,7 +9,7 @@ steps:
         outputs: {}
         metadata: {}
         http:
-          url: http://host.minikube.internal:8000/connector/notify/{{ workflow.namespace }}/{{ workflow.name }}
+          url: callback-url-from-env/notify/{{ workflow.namespace }}/{{ workflow.name }}
           headers:
             - name: Authorization
               valueFrom:
