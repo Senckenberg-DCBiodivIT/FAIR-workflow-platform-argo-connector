@@ -254,7 +254,7 @@ def list_workflows(
 
 def get_workflow_by_signature(
     workflow_signature: str, url: str, namespace: str, token: str
-) -> tuple[bool, None | str]:
+) -> tuple[bool, str]:
     """
     Checks if successful workflow with same signature already exists.
     """
@@ -273,7 +273,7 @@ def get_workflow_by_signature(
 
     items = r.json()["items"]
     if items is None:
-        return False, None
+        return False, ""
 
     items = [
         item
@@ -281,7 +281,7 @@ def get_workflow_by_signature(
         if (item["metadata"]["labels"]["workflows.argoproj.io/phase"] == "Succeeded")
     ]
     if len(items) == 0:
-        return False, None
+        return False, ""
 
     most_recent_item = max(
         items,
