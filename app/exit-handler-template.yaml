@@ -1,0 +1,29 @@
+name: exit-handler
+inputs: {}
+outputs: {}
+metadata: {}
+steps:
+  - - name: notify-argo-connector
+      inline:
+        inputs: {}
+        outputs: {}
+        metadata: {}
+        http:
+          url: http://host.minikube.internal:8000/connector/notify/{{ workflow.namespace }}/{{ workflow.name }}
+          headers:
+            - name: Authorization
+              valueFrom:
+                secretKeyRef:
+                  name: argo-connector-auth-secret
+                  key: token
+          timeoutSeconds: 10
+          successCondition: response.statusCode == 202
+          insecureSkipVerify: true
+        retryStrategy:
+          limit: "10"
+          backoff:
+            duration: 1m
+            factor: "2"
+            maxDuration: 30m
+      arguments: {}
+      when: "{{ workflow.status }} == Succeeded && {{ workflow.annotations.argo-connector/notify }} == true"

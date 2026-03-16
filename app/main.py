@@ -24,6 +24,7 @@ from typing import Annotated, List
 from time import time
 import hashlib
 from urllib.parse import unquote_plus
+from pathlib import Path as FilePath
 
 from app import cordra, argo
 from app.models import (
@@ -57,6 +58,10 @@ class Settings(BaseSettings):
 settings = Settings()
 app = FastAPI(title="CWR Workflow Submission Service", root_path=settings.root_path)
 logger = logging.getLogger("uvicorn.error")
+
+EXIT_HANDLER_TEMPLATE_PATH = FilePath(__file__).with_name("exit-handler-template.yaml")
+with EXIT_HANDLER_TEMPLATE_PATH.open("r", encoding="utf-8") as handler_file:
+    EXIT_HANDLER_TEMPLATE = yaml.load(handler_file, Loader=yaml.CLoader)
 
 security = HTTPBasic()
 if settings.auth_username is None or settings.auth_password is None:
@@ -128,6 +133,32 @@ def generate_workflow_signature(wfl: dict) -> str:
     m.update(normalized_workflow.encode("utf-8"))
     workflow_signature = m.hexdigest()[:32]  # truncate hash
     return workflow_signature
+
+
+def ensure_connector_exit_handler(workflow: dict) -> None:
+    """Add or replace the connector exit handler and enforce onExit binding."""
+    if "spec" not in workflow or not isinstance(workflow["spec"], dict):
+        workflow["spec"] = {}
+
+    spec = workflow["spec"]
+    templates = spec.get("templates")
+    if not isinstance(templates, type([])):
+        templates = []
+        spec["templates"] = templates
+
+    exit_handler_template = deepcopy(EXIT_HANDLER_TEMPLATE)
+
+    replaced = False
+    for i, template in enumerate(templates):
+        if template.get("name") == "exit-handler":
+            templates[i] = exit_handler_template
+            replaced = True
+            break
+
+    if not replaced:
+        templates.append(exit_handler_template)
+
+    spec["onExit"] = "exit-handler"
 
 
 def trigger_webhook(webhookURL: str, workflow_id: str, status: str):
@@ -411,6 +442,9 @@ async def submit(
 
     content = await file.read()
     content = yaml.load(content, Loader=yaml.CLoader)
+
+    logger.info("Ensuring connector exit handler is configured")
+    ensure_connector_exit_handler(content)
 
     logger.info("Patch workflow with submitter data")
     if "metadata" not in content:
