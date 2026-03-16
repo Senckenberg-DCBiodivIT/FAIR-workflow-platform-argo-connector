@@ -78,6 +78,44 @@ def check_auth(credentials: Annotated[HTTPBasicCredentials, Depends(security)]):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
 
+def _parse_argo_api_exception(e: argo_workflows.exceptions.ApiException):
+    body = e.body
+    try:
+        if isinstance(body, (str, bytes, bytearray)):
+            detail = json.loads(body)
+        else:
+            detail = str(e)
+    except Exception:
+        detail = str(e)
+    status_code = getattr(e, "status", None) or 400
+    return status_code, detail
+
+
+def _validate_argo_access(namespace: str | None = None) -> None:
+    """Fail fast when Argo is unreachable or token/permissions are invalid."""
+    resolved_namespace = namespace or settings.argo_default_namespace
+    health = argo.check_health(
+        settings.argo_base_url,
+        settings.argo_token,
+        resolved_namespace,
+        verify_cert=False,
+    )
+    if health is True:
+        return
+
+    health_str = str(health)
+    lowered = health_str.lower()
+    if "unauthorized" in lowered or "forbidden" in lowered or "401" in lowered:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid ARGO_TOKEN or insufficient permissions to access Argo.",
+        )
+
+    raise HTTPException(
+        status_code=502,
+        detail=f"Argo preflight check failed: {health_str}",
+    )
+
 def process_workflow(name: str, namespace: str, skip_content: bool):
     logger.info(f"Ingesting {namespace}/{name}")
     start = time()
@@ -213,6 +251,8 @@ def notify(
     Notify the connector about a finished argo workflow. This will cause the workflow to be ingested.
     Starts a background task for the ingestion and returns early.
     """
+    _validate_argo_access(namespace)
+
     # Sanity check. Is this a valid workflow
     try:
         logger.info(f"Retrieving Workflow information for {namespace}/{name}")
@@ -293,6 +333,8 @@ def workflow_detail(
     Show workflow details
 
     """
+    _validate_argo_access(namespace)
+
     try:
         logger.info(f"Retrieving Workflow information for {namespace}/{name}")
         wfl = argo.get_workflow_information(
@@ -329,6 +371,8 @@ def list():
     """
     Lists workflows
     """
+    _validate_argo_access(settings.argo_default_namespace)
+
     items = []
     for item in argo.list_workflows(
         settings.argo_base_url, settings.argo_token, verify_cert=False
@@ -363,6 +407,8 @@ async def check_workflow(
     ),
 ):
     """Checks the provided workflow file against the workflow engine. Returns the validated workflow if valid, else returns the workflow engine error response."""
+    _validate_argo_access(settings.argo_default_namespace)
+
     content = await file.read()
     content = yaml.load(content, Loader=yaml.CLoader)
     try:
@@ -384,10 +430,11 @@ async def check_workflow(
         return {"workflow": checked_workflow, "parameters": workflow_parameters}
     except argo_workflows.exceptions.OpenApiException as e:
         if isinstance(e, argo_workflows.exceptions.ApiException):
-            detail = json.loads(e.body)
+            status_code, detail = _parse_argo_api_exception(e)
         else:
+            status_code = 400
             detail = str(e)
-        raise HTTPException(status_code=400, detail=detail)
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 @app.post(
@@ -439,6 +486,8 @@ async def submit(
     Submit a new workflow to the workflow engine. This verifies that the workflow is a valid workflow and then submits it for processing.
     Returns the response from the workflow engine
     """
+
+    _validate_argo_access(settings.argo_default_namespace)
 
     content = await file.read()
     content = yaml.load(content, Loader=yaml.CLoader)
@@ -492,7 +541,8 @@ async def submit(
             verify_cert=False,
         )
     except argo_workflows.exceptions.ApiException as e:
-        raise HTTPException(status_code=400, detail=json.loads(e.body))
+        status_code, detail = _parse_argo_api_exception(e)
+        raise HTTPException(status_code=status_code, detail=detail)
 
     workflow_signature = generate_workflow_signature(checked_workflow)
 
@@ -540,4 +590,5 @@ async def submit(
             "workflow_id": workflow_id,
         }
     except argo_workflows.exceptions.ApiException as e:
-        raise HTTPException(status_code=400, detail=json.loads(e.body))
+        status_code, detail = _parse_argo_api_exception(e)
+        raise HTTPException(status_code=status_code, detail=detail)
