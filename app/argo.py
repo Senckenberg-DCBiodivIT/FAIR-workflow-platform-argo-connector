@@ -42,7 +42,7 @@ def check_health(
 
 def get_workflow_information(
     host: str, token: str, namespace: str, workflow_name: str, verify_cert: bool = True
-) -> dict[str:Any]:
+) -> dict[str, Any]:
     """Return workflow information from Argo"""
     client = _build_argo_client(host, token, verify_cert=verify_cert)
     api = workflow_service_api.WorkflowServiceApi(client)
@@ -50,7 +50,7 @@ def get_workflow_information(
     return wfl
 
 
-def parse_artifact_list(wfl: dict[str:Any]) -> list[tuple[str, str, str]]:
+def parse_artifact_list(wfl: dict[str, Any]) -> list[tuple[str, str, str]]:
     """Returns a list of artifacts in the workflow
     Ignores artifacts that are not part of a nodes output folder. This should
     ensure that no caching data is archived.
@@ -88,7 +88,7 @@ def parse_artifact_list(wfl: dict[str:Any]) -> list[tuple[str, str, str]]:
     return artifacts_list
 
 
-def reconstruct_workflow_from_workflowinfo(wfl: dict[str:Any]) -> dict[str:Any]:
+def reconstruct_workflow_from_workflowinfo(wfl: dict[str, Any]) -> dict[str, Any]:
     metadata = {
         "annotations": wfl["metadata"].get("annotations", {}),
     }
@@ -192,10 +192,10 @@ def artifact_reader(
 def verify(
     host: str,
     token: str,
-    workflow: dict[str:Any],
+    workflow: dict[str, Any],
     namespace: str,
     verify_cert: bool = True,
-) -> dict[str:Any]:
+) -> dict[str, Any]:
     """Checks against agro to confirm this is a valid workflow. Returns the workflow definition if valid."""
     client = _build_argo_client(host, token, verify_cert=verify_cert)
     api = workflow_service_api.WorkflowServiceApi(client)
@@ -217,7 +217,7 @@ def verify(
 def submit(
     host: str,
     token: str,
-    workflow: dict[str:Any],
+    workflow: dict[str, Any],
     namespace: str,
     dry_run: bool = False,
     verify_cert: bool = True,
@@ -249,7 +249,7 @@ def submit(
 
 def list_workflows(
     host: str, token: str, verify_cert: bool = True
-) -> List[dict[str:Any]]:
+) -> List[dict[str, Any]]:
     """Lists workflows from Argo"""
     client = _build_argo_client(host, token, verify_cert=verify_cert)
     api = workflow_service_api.WorkflowServiceApi(client)
