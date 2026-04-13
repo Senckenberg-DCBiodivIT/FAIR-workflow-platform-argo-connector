@@ -51,3 +51,31 @@ class WorkflowListResponseModel(BaseModel):
     submitterId: str | None = Field(
         None, description="Id (ORCID, ROR or doi) of the user submitting the workflow"
     )
+
+
+class WorkflowGraphElementModel(BaseModel):
+    data: dict = Field(
+        ..., description="Element data containing id, label, source, target, etc."
+    )
+    position: dict | None = Field(
+        None, description="Optional position information for nodes"
+    )
+    classes: str | None = Field(None, description="Optional CSS classes")
+
+
+class WorkflowGraphElementsModel(BaseModel):
+    nodes: List[WorkflowGraphElementModel] = Field(
+        default_factory=list, description="Graph nodes"
+    )
+    edges: List[WorkflowGraphElementModel] = Field(
+        default_factory=list, description="Graph edges"
+    )
+
+
+class WorkflowGraphResponseModel(BaseModel):
+    data: list = Field(default_factory=list, description="Graph-level attributes")
+    directed: bool = Field(..., description="Whether the graph is directed")
+    multigraph: bool = Field(..., description="Whether the graph is a multigraph")
+    elements: WorkflowGraphElementsModel = Field(
+        ..., description="Cytoscape graph elements (nodes and edges)"
+    )

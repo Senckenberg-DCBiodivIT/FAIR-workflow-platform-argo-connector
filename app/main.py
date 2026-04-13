@@ -1,36 +1,40 @@
-import json
-from copy import deepcopy
-
-import argo_workflows.exceptions
-import yaml
-from fastapi import (
-    FastAPI,
-    HTTPException,
-    BackgroundTasks,
-    Depends,
-    UploadFile,
-    Path,
-    File,
-    Form,
-    Query,
-)
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import JSONResponse
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import AnyUrl
-import requests
-import logging
-from typing import Annotated, List
-from time import time
 import hashlib
+import json
+import logging
+from copy import deepcopy
+from time import time
+from typing import Annotated, List
 from urllib.parse import unquote_plus
 
-from app import cordra, argo
+import argo_workflows.exceptions
+import networkx as nx
+import requests
+import yaml
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Path,
+    Query,
+    UploadFile,
+)
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from pydantic import AnyUrl, ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app import argo, cordra
 from app.models import (
     HealthModel,
     NotificationResponseModel,
-    WorkflowResponseModel,
+    WorkflowGraphElementModel,
+    WorkflowGraphElementsModel,
+    WorkflowGraphResponseModel,
     WorkflowListResponseModel,
+    WorkflowResponseModel,
 )
 
 
@@ -507,3 +511,50 @@ async def submit(
         }
     except argo_workflows.exceptions.ApiException as e:
         raise HTTPException(status_code=400, detail=json.loads(e.body))
+
+
+@app.post(
+    "/workflow/graph",
+    dependencies=[Depends(check_auth)],
+    response_model=WorkflowGraphResponseModel,
+)
+async def workflow_graph_representation(
+    file: UploadFile = File(
+        ...,
+        description="Workflow file. Must be a valid Argo workflow in yaml format",
+        media_type="text/yaml",
+    ),
+):
+    """
+    Returns a cytoscape graph representation of the provided workflow file.
+    This can be used to display the workflow graph in the frontend.
+    The graph is simplified and does not contain all details of the workflow,
+    but only the basic structure and parameters.
+    """
+
+    content = await file.read()
+    content = yaml.safe_load(content)
+
+    try:
+        G = argo.workflow_graph(
+            workflow=content,
+        )
+        cyto_data = nx.cytoscape_data(G)
+
+        nodes = [
+            WorkflowGraphElementModel(**node) for node in cyto_data["elements"]["nodes"]
+        ]
+        edges = [
+            WorkflowGraphElementModel(**edge) for edge in cyto_data["elements"]["edges"]
+        ]
+
+        return WorkflowGraphResponseModel(
+            data=cyto_data.get("data", []),
+            directed=cyto_data.get("directed", True),
+            multigraph=cyto_data.get("multigraph", False),
+            elements=WorkflowGraphElementsModel(nodes=nodes, edges=edges),
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

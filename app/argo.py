@@ -1,15 +1,19 @@
-import uuid
-from typing import Any, List
 import logging
+import os
+import re
+import urllib.parse
+import uuid
+from datetime import datetime
+from typing import Any, List, cast
 
 import argo_workflows
-from argo_workflows.api import workflow_service_api
+import networkx as nx
 import requests
+from argo_workflows.api import workflow_service_api
 from bs4 import BeautifulSoup
-import os
-import urllib.parse
 from fastapi import HTTPException
-from datetime import datetime
+from hera.workflows import Workflow
+from hera.workflows.models import Template
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -292,3 +296,85 @@ def get_workflow_by_signature(
     workflow_id = most_recent_item["metadata"]["name"]
 
     return True, workflow_id
+
+def workflow_graph(
+    workflow: dict[str, Any],
+) -> nx.DiGraph:
+    w: Workflow = cast(Workflow, Workflow.from_dict(workflow))
+    G = nx.DiGraph()
+
+    step_objects = {}
+
+    entry_template = cast(
+        Template, next((t for t in w.templates if t.name == w.entrypoint), None)
+    )
+    if entry_template is None or entry_template.steps is None:
+        return G  # no matching entrypoint template or no steps, return empty graph
+
+    prev_steps = []
+
+    # add steps as nodes and dependencies as edges
+    for step_group in entry_template.steps:
+        current_steps = step_group.root
+
+        for s in current_steps:
+            step_objects[s.name] = s
+            G.add_node(f"task:{s.name}", type="task")
+
+        for prev in prev_steps:
+            for curr in current_steps:
+                G.add_edge(f"task:{prev.name}", f"task:{curr.name}", type="control")
+
+        prev_steps = current_steps
+
+    # add artifacts as nodes and producer/consumer relationships as edges
+    artifact_pattern = re.compile(r"steps\.(.*?)\.outputs\.artifacts\.(.*)}}")
+
+    for step_name, step in step_objects.items():
+        if not step.arguments or not step.arguments.artifacts:
+            continue
+
+        for art in step.arguments.artifacts:
+            if not art.from_:
+                continue
+
+            match = artifact_pattern.search(art.from_)
+            if not match:
+                continue
+            producer = match.group(1)
+            artifact_name = match.group(2).strip()
+
+            # unique artifact node
+            art_node = f"artifact:{artifact_name}"
+
+            G.add_node(art_node, type="artifact")
+
+            # producer → artifact
+            G.add_edge(f"task:{producer}", art_node, type="data")
+
+            # artifact → consumer
+            G.add_edge(art_node, f"task:{step_name}", type="data")
+
+    # add artifacts from outputs that are not consumed by any step
+    templates = {t.name: t for t in w.templates}
+
+    for step_name, step in step_objects.items():
+        template = cast(Template, templates.get(step.template))
+
+        if template and template.outputs and template.outputs.artifacts:
+            for art in template.outputs.artifacts:
+                if art.s3:
+                    continue  # skip external artifacts
+
+                art_node = f"artifact:{art.name}"
+                if (
+                    art.artifact_gc
+                    and art.artifact_gc.strategy == "OnWorkflowCompletion"
+                ):
+                    nx.set_node_attributes(
+                        G, {art_node: {"gc": True}}
+                    )  # mark GCed artifact
+                G.add_node(art_node, type="artifact")
+                G.add_edge(f"task:{step_name}", art_node, type="data")
+
+    return G

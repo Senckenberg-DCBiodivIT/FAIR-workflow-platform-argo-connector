@@ -10,9 +10,11 @@ click==8.3.1
 CordraPy @ git+https://github.com/usnistgov/CordraPy@7d73f3f58461a2dc7540970fe7defaa361b61740
 fastapi==0.128.0
 h11==0.16.0
+hera==6.0.0
 idna==3.11
 Jinja2==3.1.6
 MarkupSafe==3.0.3
+networkx==3.6.1
 pydantic==2.8.2
 pydantic-settings==2.3.4
 pydantic_core==2.20.1
