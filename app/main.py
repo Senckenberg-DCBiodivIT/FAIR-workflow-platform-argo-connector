@@ -51,9 +51,7 @@ class Settings(BaseSettings):
     cordra_user: str
     cordra_password: str
 
-    root_path: str | None = (
-        None  # might be behind a proxy. This would be the prefix then.
-    )
+    root_path: str = "" # might be behind a proxy. This would be the prefix then.
 
     model_config = SettingsConfigDict(env_file=".env")  # for dev env
 
@@ -477,13 +475,13 @@ async def submit(
     ]
 
     if not force:
-        workflow_found, workflow_id = argo.get_workflow_by_signature(
+        workflow_id = argo.get_workflow_by_signature(
             workflow_signature, settings.argo_base_url, namespace, settings.argo_token
         )
 
         # don't resubmit workflow, if it already ran successfully
         # instead return the workflow_id of the existing workflow
-        if workflow_found:
+        if workflow_id:
             logger.info("Workflow already exists")
             if webhookURL is not None:
                 trigger_webhook(webhookURL, workflow_id, status="Succeeded")

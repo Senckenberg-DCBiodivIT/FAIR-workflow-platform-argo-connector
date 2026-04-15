@@ -10,7 +10,7 @@ from urllib.parse import urljoin
 
 import magic
 import cordra
-from typing import Any, Generator
+from typing import Any, Generator, cast
 import yaml
 
 logger = logging.getLogger("uvicorn.error")
@@ -19,7 +19,7 @@ logger = logging.getLogger("uvicorn.error")
 def check_health(host: str, user: str, password: str) -> bool | str:
     try:
         schemas = cordra.CordraObject.find(
-            host=host,
+            host=cast(Any, host),
             username=user,
             password=password,
             verify=False,
@@ -37,15 +37,15 @@ def create_dataset_from_workflow_artifacts(
     host: str,
     user: str,
     password: str,
-    wfl: dict[str:Any],
+    wfl: dict[str, Any],
     artifact_stream_iterator: Generator,
-    reconstructed_wfl: dict[str:Any],
+    reconstructed_wfl: dict[str, Any],
     skip_content: bool = False,
     file_max_size: int = 100 * 1024 * 1024,
-    suffix: str = None,
+    suffix: str | None = None,
 ) -> str:
-    upload_kwargs = {
-        "host": host,
+    upload_kwargs: dict[str, Any] = {
+        "host": cast(Any, host),
         "username": user,
         "password": password,
         "verify": False,
