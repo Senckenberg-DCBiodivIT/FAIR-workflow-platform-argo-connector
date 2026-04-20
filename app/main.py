@@ -107,21 +107,18 @@ def process_workflow(name: str, namespace: str, skip_content: bool):
             suffix=name,
         )
     except Exception:
-        try:
-            webhookURL = wfl["metadata"]["annotations"]["argo-connector/webhookURL"]
+        webhookURL = wfl.get("metadata", {}).get("annotations", {}).get("argo-connector/webhookURL", None)
+        if webhookURL is not None:
             trigger_webhook(webhookURL, name, status="Failed")
-        except KeyError:
-            pass
         return
     stop = time()
     logger.info(
         f"Successfully ingested {namespace}/{name} in {stop - start:.1f} seconds."
     )
-    try:
-        webhookURL = wfl["metadata"]["annotations"]["argo-connector/webhookURL"]
+    
+    webhookURL = wfl.get("metadata", {}).get("annotations", {}).get("argo-connector/webhookURL", None)
+    if webhookURL is not None:
         trigger_webhook(webhookURL, name, status="Succeeded")
-    except KeyError:
-        pass
 
 
 def generate_workflow_signature(wfl: dict) -> str:
@@ -203,17 +200,15 @@ def notify(
         node = wfl["status"]["nodes"][node_id]
         if "onExit" in node["name"]:
             continue  # ignore exit nodes
-        if node["phase"] != "Succeeded":
+        if node["phase"] not in ["Succeeded", "Skipped"]:
             unsucceeded_nodes.append(node["name"])
 
     if wfl["status"]["phase"] != "Succeeded":
         if len(unsucceeded_nodes) > 0:
-            try:
-                webhookURL = wfl["metadata"]["annotations"]["argo-connector/webhookURL"]
+            webhookURL = wfl.get("metadata", {}).get("annotations", {}).get("argo-connector/webhookURL", None)
+            if webhookURL is not None:
                 trigger_webhook(webhookURL, name, status="Failed")
-            except KeyError:
-                pass
-
+            logger.info(f"Workflow still running, unsucceeded nodes: {unsucceeded_nodes}. Stopping processing.")
             return JSONResponse(
                 status_code=202,
                 content={
@@ -449,6 +444,8 @@ async def submit(
                         unquote_plus(value)
                     )
                     break
+    if content["spec"]["podGC"] is None:
+        content["spec"]["podGC"] = {"strategy": "OnWorkflowCompletion"}
 
     try:
         logger.info("Linting workflow...")
